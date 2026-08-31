@@ -2,9 +2,11 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# Install frontend deps and build the SPA
+# Install frontend deps and build the SPA.
+# --include=dev is explicit: the build needs typescript/vite/@types, which npm
+# would skip if NODE_ENV=production leaked into this stage.
 COPY frontend/package*.json ./frontend/
-RUN npm --prefix frontend install
+RUN npm --prefix frontend install --include=dev
 COPY frontend ./frontend
 RUN npm --prefix frontend run build
 

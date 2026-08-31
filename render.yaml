@@ -7,7 +7,10 @@ services:
     name: billkaro
     runtime: node
     plan: free
-    buildCommand: npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend install
+    # NODE_ENV=production makes npm skip devDependencies, but the frontend build
+    # needs them (typescript, vite, @types/react). --include=dev forces them in.
+    # The backend only needs production deps at runtime.
+    buildCommand: npm --prefix frontend install --include=dev && npm --prefix frontend run build && npm --prefix backend install --omit=dev
     startCommand: node backend/src/server.js
     healthCheckPath: /api/health
     envVars:
