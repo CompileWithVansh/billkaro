@@ -10,6 +10,20 @@ import authRoutes from './routes/authRoutes.js';
 import itemRoutes from './routes/itemRoutes.js';
 import billRoutes from './routes/billRoutes.js';
 
+// Memoized DB initialization. Retries on failure so a sleeping/cold database
+// (e.g. Neon free tier waking up) doesn't permanently break the process.
+let dbReady = null;
+function ensureDb() {
+  if (!dbReady) {
+    dbReady = initDb().catch((err) => {
+      // Reset so the next request retries instead of caching a rejection.
+      dbReady = null;
+      throw err;
+    });
+  }
+  return dbReady;
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -43,9 +57,22 @@ app.use(
 app.use(express.json({ limit: '1mb' }));
 
 // ---------------- API ----------------
+// Health check does NOT touch the DB, so the platform can mark the service
+// live even while the database is still waking up.
 app.get('/api/health', (_req, res) =>
   res.json({ ok: true, service: 'billkaro', env: isProd ? 'production' : 'development' })
 );
+
+// Ensure the schema exists before any data route runs. Cheap after the first
+// success (memoized); retries if the DB was momentarily unreachable.
+app.use(['/api/auth', '/api/items', '/api/bills'], (_req, res, next) => {
+  ensureDb()
+    .then(() => next())
+    .catch((err) => {
+      console.error('DB not ready:', err.message);
+      res.status(503).json({ error: 'Database is starting up, please retry in a moment.' });
+    });
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
@@ -79,16 +106,14 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Initialize the database schema, then start listening.
-initDb()
-  .then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(
-        `BillKaro running on http://0.0.0.0:${PORT} (${isProd ? 'production' : 'development'})`
-      );
-    });
-  })
-  .catch((err) => {
-    console.error('FATAL: could not initialize the database.', err);
-    process.exit(1);
-  });
+// Start listening immediately so the platform health check passes even if the
+// database is still cold. Kick off schema init in the background; data routes
+// also guarantee it via ensureDb(), retrying as needed.
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(
+    `BillKaro running on http://0.0.0.0:${PORT} (${isProd ? 'production' : 'development'})`
+  );
+  ensureDb()
+    .then(() => console.log('BillKaro: database ready.'))
+    .catch((err) => console.error('BillKaro: initial DB init failed, will retry on request:', err.message));
+});

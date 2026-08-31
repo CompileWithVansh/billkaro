@@ -1,4 +1,11 @@
 import pg from 'pg';
+import dns from 'dns';
+
+// Some Neon endpoints publish ONLY IPv6 (AAAA) records. Node's default DNS
+// result ordering can then fail to connect with ENOTFOUND even though the host
+// is reachable over IPv6. Using "verbatim" order makes Node honour whatever the
+// resolver returns (IPv6 included) instead of preferring IPv4.
+dns.setDefaultResultOrder('verbatim');
 
 /**
  * Cloud Postgres datastore (Neon / any Postgres).
@@ -14,27 +21,38 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  console.error('FATAL: DATABASE_URL is not set. Point it at your Postgres database.');
-  process.exit(1);
+// The pool is created lazily so a missing/invalid DATABASE_URL surfaces as a
+// runtime error (handled as a 503) instead of crashing the process at import
+// time — which would guarantee a failed deploy on platforms like Render.
+let pool = null;
+function getPool() {
+  if (pool) return pool;
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is not set. Point it at your Postgres database.');
+  }
+  // Neon and most hosted Postgres require SSL. We pass the ssl option
+  // explicitly, so strip sslmode/channel_binding params from the URL to avoid
+  // pg's verify-full aliasing warning and driver conflicts.
+  let clean = connectionString;
+  for (const param of ['sslmode', 'channel_binding']) {
+    clean = clean.replace(new RegExp(`([?&])${param}=[^&]*`, 'g'), '$1');
+  }
+  // Tidy up any leftover separators (e.g. "?&", trailing "?" or "&").
+  clean = clean.replace(/\?&+/, '?').replace(/&&+/g, '&').replace(/[?&]$/, '');
+  pool = new Pool({
+    connectionString: clean,
+    ssl: { rejectUnauthorized: false },
+    max: 5,
+  });
+  return pool;
 }
-
-// Neon and most hosted Postgres require SSL. We pass the ssl option explicitly
-// and strip any sslmode query param to avoid pg's verify-full aliasing warning.
-const cleanConnectionString = connectionString.replace(/([?&])sslmode=[^&]*(&|$)/, (_m, p1, p2) =>
-  p2 === '&' ? p1 : ''
-);
-const pool = new Pool({
-  connectionString: cleanConnectionString,
-  ssl: { rejectUnauthorized: false },
-});
 
 // ------------------------------------------------------------
 // Schema (created on boot; safe to run repeatedly)
 // ------------------------------------------------------------
 export async function initDb() {
-  await pool.query(`
+  await getPool().query(`
     CREATE TABLE IF NOT EXISTS billkaro_users (
       id            SERIAL PRIMARY KEY,
       store_name    TEXT NOT NULL,
@@ -79,15 +97,15 @@ export async function initDb() {
 // ---------------- Users ----------------
 export const usersRepo = {
   async findByEmail(email) {
-    const { rows } = await pool.query('SELECT * FROM billkaro_users WHERE email = $1', [email]);
+    const { rows } = await getPool().query('SELECT * FROM billkaro_users WHERE email = $1', [email]);
     return rows[0] || null;
   },
   async findById(id) {
-    const { rows } = await pool.query('SELECT * FROM billkaro_users WHERE id = $1', [Number(id)]);
+    const { rows } = await getPool().query('SELECT * FROM billkaro_users WHERE id = $1', [Number(id)]);
     return rows[0] || null;
   },
   async create({ storeName, email, passwordHash, upiId, payeeName, taxPercent }) {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       `INSERT INTO billkaro_users (store_name, email, password_hash, upi_id, payee_name, tax_percent)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [storeName, email, passwordHash, upiId || null, payeeName || storeName, Number(taxPercent) || 0]
@@ -95,7 +113,7 @@ export const usersRepo = {
     return rows[0];
   },
   async update(id, fields) {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       `UPDATE billkaro_users SET
          store_name  = COALESCE($1, store_name),
          upi_id      = COALESCE($2, upi_id),
@@ -117,26 +135,26 @@ export const usersRepo = {
 // ---------------- Items ----------------
 export const itemsRepo = {
   async listByUser(userId) {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       'SELECT * FROM billkaro_items WHERE user_id = $1 ORDER BY sort_order ASC, id ASC',
       [Number(userId)]
     );
     return rows;
   },
   async findById(id, userId) {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       'SELECT * FROM billkaro_items WHERE id = $1 AND user_id = $2',
       [Number(id), Number(userId)]
     );
     return rows[0] || null;
   },
   async create(userId, { name, price, color, category }) {
-    const { rows: maxRows } = await pool.query(
+    const { rows: maxRows } = await getPool().query(
       'SELECT COALESCE(MAX(sort_order), -1) AS m FROM billkaro_items WHERE user_id = $1',
       [Number(userId)]
     );
     const nextOrder = Number(maxRows[0].m) + 1;
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       `INSERT INTO billkaro_items (user_id, name, price, color, category, sort_order)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [Number(userId), name, Number(price) || 0, color || '#2563eb', category || '', nextOrder]
@@ -144,7 +162,7 @@ export const itemsRepo = {
     return rows[0];
   },
   async update(id, userId, fields) {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       `UPDATE billkaro_items SET
          name     = COALESCE($1, name),
          price    = COALESCE($2, price),
@@ -163,14 +181,14 @@ export const itemsRepo = {
     return rows[0] || null;
   },
   async remove(id, userId) {
-    const res = await pool.query(
+    const res = await getPool().query(
       'DELETE FROM billkaro_items WHERE id = $1 AND user_id = $2',
       [Number(id), Number(userId)]
     );
     return res.rowCount > 0;
   },
   async reorder(userId, orderIds) {
-    const client = await pool.connect();
+    const client = await getPool().connect();
     try {
       await client.query('BEGIN');
       for (let index = 0; index < orderIds.length; index++) {
@@ -193,7 +211,7 @@ export const itemsRepo = {
 // ---------------- Bills ----------------
 export const billsRepo = {
   async create(userId, { label, items, subtotal, tax, total, status }) {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       `INSERT INTO billkaro_bills (user_id, label, items_json, subtotal, tax, total, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [
@@ -209,7 +227,7 @@ export const billsRepo = {
     return rows[0];
   },
   async listByUser(userId) {
-    const { rows } = await pool.query(
+    const { rows } = await getPool().query(
       'SELECT * FROM billkaro_bills WHERE user_id = $1 ORDER BY id DESC LIMIT 100',
       [Number(userId)]
     );
