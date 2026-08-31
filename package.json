@@ -1,0 +1,19 @@
+{
+  "name": "billkaro",
+  "version": "1.0.0",
+  "description": "BillKaro — touch POS for iPad. Single-process deploy: backend serves the built frontend.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "build": "npm --prefix frontend install && npm --prefix frontend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "start": "npm --prefix backend start",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "postinstall": "npm --prefix backend install"
+  }
+}
