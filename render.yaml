@@ -1,0 +1,24 @@
+# One-click deploy config for Render (https://render.com).
+# Creates a single web service that builds the frontend and runs the backend,
+# which serves both the API and the built SPA. Data lives in a cloud Postgres
+# database (set DATABASE_URL), so no persistent disk is required.
+services:
+  - type: web
+    name: billkaro
+    runtime: node
+    plan: free
+    buildCommand: npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend install
+    startCommand: node backend/src/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Auto-generate a strong JWT secret on first deploy.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      # REQUIRED: your cloud Postgres connection string (Neon/Supabase/etc).
+      # Set this in the Render dashboard (kept secret, not committed).
+      - key: DATABASE_URL
+        sync: false
