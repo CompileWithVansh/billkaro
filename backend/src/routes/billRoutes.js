@@ -1,17 +1,25 @@
 import express from 'express';
-import { billsRepo, itemsRepo } from '../db.js';
+import { billsRepo, itemsRepo, getPool } from '../db.js';
 import { requireAuth } from '../auth.js';
 
 const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-// Public KDS orders endpoint for paired kitchen screens
+// Public KDS orders endpoint for paired kitchen screens (Only active/recent bills within last 2 hours)
 router.get(
   '/kds/orders',
   wrap(async (req, res) => {
     const storeId = req.query.store;
     if (!storeId) return res.status(400).json({ error: 'Store ID is required' });
-    const rows = await billsRepo.listByUser(storeId);
+
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const { rows } = await getPool().query(
+      `SELECT * FROM billkaro_bills 
+       WHERE user_id = $1 AND created_at >= $2 
+       ORDER BY id DESC LIMIT 50`,
+      [Number(storeId), twoHoursAgo]
+    );
+
     res.json({
       bills: rows.map((r) => ({
         id: r.id,
@@ -31,6 +39,30 @@ router.get(
 );
 
 router.use(requireAuth);
+
+// POST /api/bills/kds/send (Explicitly send current cart ticket to Kitchen Display)
+router.post(
+  '/kds/send',
+  wrap(async (req, res) => {
+    const { label, items } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Cart items required to send ticket to kitchen' });
+    }
+    const io = req.app.get('io');
+    const orderTicket = {
+      id: 'KDS-' + Date.now().toString().slice(-4),
+      label: label || 'Kitchen Ticket',
+      items,
+      total: items.reduce((s, l) => s + (l.price || 0) * (l.qty || 1), 0),
+      createdAt: new Date().toISOString(),
+      status: 'preparing',
+    };
+    if (io) {
+      io.to(`store_${req.userId}`).emit('kds:new-order', orderTicket);
+    }
+    res.json({ ok: true, ticket: orderTicket });
+  })
+);
 
 // POST /api/bills
 router.post(

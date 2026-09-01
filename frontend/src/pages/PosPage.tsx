@@ -377,6 +377,23 @@ export default function PosPage() {
     setShowPayment(false);
   }
 
+  const [kdsSentToast, setKdsSentToast] = useState(false);
+
+  async function handleSendToKitchen() {
+    if (activeBill.lines.length === 0) return;
+    try {
+      await api.post('/bills/kds/send', {
+        label: activeBill.label,
+        items: activeBill.lines,
+      });
+      setKdsSentToast(true);
+      setTimeout(() => setKdsSentToast(false), 3000);
+    } catch (err) {
+      console.error('Failed to send ticket to KDS:', err);
+      alert('Could not send ticket to Kitchen.');
+    }
+  }
+
   return (
     <div className="pos">
       {/* Top bar */}
@@ -599,6 +616,14 @@ export default function PosPage() {
 
             <div className="cart-actions">
               <button className="btn ghost" onClick={clearActiveBill}>Clear</button>
+              <button
+                className="btn secondary"
+                disabled={activeBill.lines.length === 0}
+                onClick={handleSendToKitchen}
+                title="Send live ticket to Kitchen Display Screen"
+              >
+                {kdsSentToast ? '✔ Sent!' : '🍳 Kitchen'}
+              </button>
               <button
                 className="btn green"
                 disabled={total <= 0}

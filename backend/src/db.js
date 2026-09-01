@@ -25,7 +25,7 @@ const { Pool } = pg;
 // runtime error (handled as a 503) instead of crashing the process at import
 // time — which would guarantee a failed deploy on platforms like Render.
 let pool = null;
-function getPool() {
+export function getPool() {
   if (pool) return pool;
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
