@@ -30,6 +30,22 @@ function makeLineId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function nextBillNumber(bills: Bill[]): number {
+  // Extract numeric suffixes from "Bill N" labels.
+  const used = new Set(
+    bills
+      .map((b) => {
+        const m = b.label.match(/^Bill (\d+)$/);
+        return m ? parseInt(m[1], 10) : null;
+      })
+      .filter((n): n is number => n !== null)
+  );
+  // Return lowest positive integer not already in use.
+  let n = 1;
+  while (used.has(n)) n++;
+  return n;
+}
+
 function newBill(index: number): Bill {
   return {
     id: makeLineId(),
@@ -45,7 +61,7 @@ function billTotal(b: Bill, taxPercent: number) {
 }
 
 // Load persisted tabs (so an accidental refresh doesn't wipe open tables).
-function loadTabs(): { bills: Bill[]; counter: number } | null {
+function loadTabs(): { bills: Bill[] } | null {
   try {
     const raw = localStorage.getItem(TABS_KEY);
     if (!raw) return null;
@@ -67,7 +83,6 @@ export default function PosPage() {
   const persisted = loadTabs();
   const [bills, setBills] = useState<Bill[]>(persisted?.bills ?? [newBill(1)]);
   const [activeId, setActiveId] = useState<string>(persisted?.bills?.[0]?.id ?? '');
-  const [billCounter, setBillCounter] = useState(persisted?.counter ?? 1);
 
   // Modals
   const [showSettings, setShowSettings] = useState(false);
@@ -92,8 +107,8 @@ export default function PosPage() {
 
   // Persist tabs on every change.
   useEffect(() => {
-    localStorage.setItem(TABS_KEY, JSON.stringify({ bills, counter: billCounter }));
-  }, [bills, billCounter]);
+    localStorage.setItem(TABS_KEY, JSON.stringify({ bills }));
+  }, [bills]);
 
   // Reload-safe guard: warn before leaving/refreshing when any bill has
   // unpaid items, so a stray reload can't wipe live calculations. Tabs are
@@ -196,11 +211,11 @@ export default function PosPage() {
 
   // ---------- Tabs ----------
   function addTab() {
-    const next = billCounter + 1;
-    setBillCounter(next);
-    const b = newBill(next);
-    setBills((prev) => [...prev, b]);
-    setActiveId(b.id);
+    setBills((prev) => {
+      const b = newBill(nextBillNumber(prev));
+      setActiveId(b.id);
+      return [...prev, b];
+    });
   }
 
   function closeTab(id: string) {
@@ -215,7 +230,7 @@ export default function PosPage() {
     }
     setBills((prev) => {
       const filtered = prev.filter((b) => b.id !== id);
-      const result = filtered.length ? filtered : [newBill(billCounter + 1)];
+      const result = filtered.length ? filtered : [newBill(nextBillNumber(filtered))];
       if (id === activeId) setActiveId(result[result.length - 1].id);
       return result;
     });
