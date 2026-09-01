@@ -14,6 +14,7 @@ function mapItem(r) {
     price: r.price,
     color: r.color,
     category: r.category,
+    stockQuantity: r.stock_quantity !== undefined && r.stock_quantity !== null ? Number(r.stock_quantity) : null,
     sortOrder: r.sort_order,
   };
 }
@@ -31,9 +32,9 @@ router.get(
 router.post(
   '/',
   wrap(async (req, res) => {
-    const { name, price, color, category } = req.body || {};
+    const { name, price, color, category, stockQuantity } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name is required' });
-    const item = await itemsRepo.create(req.userId, { name, price, color, category });
+    const item = await itemsRepo.create(req.userId, { name, price, color, category, stockQuantity });
     res.status(201).json({ item: mapItem(item) });
   })
 );
@@ -42,8 +43,8 @@ router.post(
 router.put(
   '/:id',
   wrap(async (req, res) => {
-    const { name, price, color, category } = req.body || {};
-    const item = await itemsRepo.update(req.params.id, req.userId, { name, price, color, category });
+    const { name, price, color, category, stockQuantity } = req.body || {};
+    const item = await itemsRepo.update(req.params.id, req.userId, { name, price, color, category, stockQuantity });
     if (!item) return res.status(404).json({ error: 'Item not found' });
     res.json({ item: mapItem(item) });
   })

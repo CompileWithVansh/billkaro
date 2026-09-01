@@ -7,7 +7,7 @@ interface Props {
   /** For new items, the color pre-selected so each item differs by default. */
   suggestedColor?: string;
   onClose: () => void;
-  onSave: (data: { name: string; price: number; color: string; category: string }) => void;
+  onSave: (data: { name: string; price: number; color: string; category: string; stockQuantity?: number | null }) => void;
   onDelete?: () => void;
 }
 
@@ -16,6 +16,7 @@ export default function ItemEditorModal({ initial, suggestedColor, onClose, onSa
   const [price, setPrice] = useState(initial ? String(initial.price) : '');
   const [color, setColor] = useState(initial?.color ?? suggestedColor ?? ITEM_COLORS[0]);
   const [category, setCategory] = useState(initial?.category ?? '');
+  const [stockQuantity, setStockQuantity] = useState(initial?.stockQuantity !== null && initial?.stockQuantity !== undefined ? String(initial.stockQuantity) : '');
 
   function save() {
     if (!name.trim()) return;
@@ -24,6 +25,7 @@ export default function ItemEditorModal({ initial, suggestedColor, onClose, onSa
       price: Number(price) || 0,
       color,
       category: category.trim(),
+      stockQuantity: stockQuantity === '' ? null : Number(stockQuantity),
     });
   }
 
@@ -39,6 +41,10 @@ export default function ItemEditorModal({ initial, suggestedColor, onClose, onSa
         <div className="field">
           <label>Price (₹)</label>
           <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" />
+        </div>
+        <div className="field">
+          <label>Stock Quantity (optional)</label>
+          <input type="number" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} placeholder="Unlimited (leave empty)" />
         </div>
         <div className="field">
           <label>Category (optional)</label>

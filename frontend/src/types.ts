@@ -16,6 +16,7 @@ export interface Item {
   price: number;
   color: string;
   category: string;
+  stockQuantity: number | null;
   sortOrder: number;
 }
 
@@ -32,4 +33,18 @@ export interface Bill {
   id: string;      // client-side tab id
   label: string;   // e.g. "Table 1"
   lines: CartLine[];
+}
+
+export interface SavedBill {
+  id: number | string;
+  label: string;
+  items: CartLine[];
+  subtotal: number;
+  tax: number;
+  total: number;
+  paymentMethod: 'upi' | 'cash' | 'udhaar';
+  customerName: string | null;
+  customerPhone: string | null;
+  status: 'paid' | 'unpaid';
+  createdAt: string;
 }

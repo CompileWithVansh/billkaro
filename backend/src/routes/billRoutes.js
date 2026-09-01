@@ -1,5 +1,5 @@
 import express from 'express';
-import { billsRepo } from '../db.js';
+import { billsRepo, itemsRepo } from '../db.js';
 import { requireAuth } from '../auth.js';
 
 const router = express.Router();
@@ -11,12 +11,41 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 router.post(
   '/',
   wrap(async (req, res) => {
-    const { label, items, subtotal, tax, total, status } = req.body || {};
+    const { label, items, subtotal, tax, total, paymentMethod, customerName, customerPhone, status } = req.body || {};
     if (!Array.isArray(items)) {
       return res.status(400).json({ error: 'items must be an array' });
     }
-    const bill = await billsRepo.create(req.userId, { label, items, subtotal, tax, total, status });
-    res.status(201).json({ id: bill.id });
+    const bill = await billsRepo.create(req.userId, {
+      label,
+      items,
+      subtotal,
+      tax,
+      total,
+      paymentMethod: paymentMethod || 'upi',
+      customerName: customerName || null,
+      customerPhone: customerPhone || null,
+      status: status || 'paid',
+    });
+
+    // Auto-deduct stock for sold items
+    await itemsRepo.deductStock(req.userId, items);
+
+    // Broadcast live order ticket to Kitchen Display System (KDS) sockets
+    const io = req.app.get('io');
+    if (io) {
+      const orderTicket = {
+        id: bill.id,
+        label: bill.label || 'Order',
+        items,
+        total: bill.total,
+        paymentMethod: bill.payment_method,
+        createdAt: bill.created_at,
+        status: 'preparing',
+      };
+      io.to(`store_${req.userId}`).emit('kds:new-order', orderTicket);
+    }
+
+    res.status(201).json({ id: bill.id, bill });
   })
 );
 
@@ -29,15 +58,39 @@ router.get(
       bills: rows.map((r) => ({
         id: r.id,
         label: r.label,
-        // items_json is JSONB — pg returns it already parsed.
         items: typeof r.items_json === 'string' ? JSON.parse(r.items_json) : r.items_json,
         subtotal: r.subtotal,
         tax: r.tax,
         total: r.total,
+        paymentMethod: r.payment_method || 'upi',
+        customerName: r.customer_name || null,
+        customerPhone: r.customer_phone || null,
         status: r.status,
         createdAt: r.created_at,
       })),
     });
+  })
+);
+
+// PUT /api/bills/:id/status (e.g. Mark Udhaar bill as paid)
+router.put(
+  '/:id/status',
+  wrap(async (req, res) => {
+    const { status } = req.body || {};
+    if (!status) return res.status(400).json({ error: 'status is required' });
+    const bill = await billsRepo.updateStatus(req.params.id, req.userId, status);
+    if (!bill) return res.status(404).json({ error: 'Bill not found' });
+    res.json({ ok: true, bill });
+  })
+);
+
+// DELETE /api/bills/:id
+router.delete(
+  '/:id',
+  wrap(async (req, res) => {
+    const ok = await billsRepo.remove(req.params.id, req.userId);
+    if (!ok) return res.status(404).json({ error: 'Bill not found' });
+    res.json({ ok: true });
   })
 );
 

@@ -22,25 +22,37 @@ export default function SortableItemButton({ item, qty, locked, onTap, onEdit }:
     disabled: locked,
   });
 
+  const isOutOfStock = item.stockQuantity !== null && item.stockQuantity !== undefined && item.stockQuantity <= 0;
+  const isLowStock = item.stockQuantity !== null && item.stockQuantity !== undefined && item.stockQuantity > 0 && item.stockQuantity <= 5;
+
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    background: item.color || '#2563eb',
+    background: isOutOfStock ? '#475569' : item.color || '#2563eb',
+    opacity: isOutOfStock ? 0.65 : 1,
+    cursor: isOutOfStock ? 'not-allowed' : 'pointer',
   };
 
   return (
     <button
       ref={setNodeRef}
       style={style}
-      className={`item-btn ${isDragging ? 'dragging' : ''}`}
-      // Only bind drag listeners when unlocked; otherwise plain tap-to-add.
-      {...(locked ? {} : attributes)}
-      {...(locked ? {} : listeners)}
+      className={`item-btn ${isDragging ? 'dragging' : ''} ${isOutOfStock ? 'out-of-stock' : ''}`}
+      {...(locked && !isOutOfStock ? {} : attributes)}
+      {...(locked && !isOutOfStock ? {} : listeners)}
       onClick={() => {
-        if (locked) onTap(item);
+        if (locked && !isOutOfStock) onTap(item);
       }}
     >
       {qty > 0 && <span className="badge">{qty}</span>}
+
+      {isOutOfStock && <span className="stock-badge out">Out of Stock</span>}
+      {!isOutOfStock && isLowStock && (
+        <span className="stock-badge low">Stock: {item.stockQuantity}</span>
+      )}
+      {!isOutOfStock && !isLowStock && item.stockQuantity !== null && item.stockQuantity !== undefined && (
+        <span className="stock-badge normal">Stock: {item.stockQuantity}</span>
+      )}
 
       {!locked && (
         <span
@@ -51,7 +63,10 @@ export default function SortableItemButton({ item, qty, locked, onTap, onEdit }:
           }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          ✎
+          <svg viewBox="0 0 24 24" width="13" height="13" stroke="#ffffff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
         </span>
       )}
 
