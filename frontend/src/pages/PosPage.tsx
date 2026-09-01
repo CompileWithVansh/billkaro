@@ -23,6 +23,7 @@ import PaymentModal from '../components/PaymentModal';
 import SettingsModal from '../components/SettingsModal';
 import KeypadModal from '../components/KeypadModal';
 import { nextItemColor } from '../colors';
+import { printBill } from '../components/PrintReceipt';
 
 const TABS_KEY = 'billkaro_tabs';
 
@@ -440,6 +441,13 @@ export default function PosPage() {
 
             <div className="cart-actions">
               <button className="btn ghost" onClick={clearActiveBill}>Clear</button>
+              <button
+                className="btn"
+                disabled={total <= 0}
+                onClick={() => user && printBill({ bill: activeBill, user, subtotal, tax, total })}
+              >
+                🖨️ Print
+              </button>
               <button
                 className="btn green"
                 disabled={total <= 0}
