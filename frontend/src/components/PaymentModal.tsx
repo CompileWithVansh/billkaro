@@ -12,6 +12,7 @@ interface Props {
     customerName?: string;
     customerPhone?: string;
     status: 'paid' | 'unpaid';
+    shouldPrint?: boolean;
   }) => void;
 }
 
@@ -53,7 +54,7 @@ export default function PaymentModal({
       .catch(() => setError('Could not generate QR code.'));
   }, [amount, upiId, payeeName, storeName, method]);
 
-  function handleComplete() {
+  function handleComplete(shouldPrint: boolean = false) {
     if (method === 'udhaar') {
       if (!customerName.trim()) {
         setError('Please enter Customer Name for Udhaar credit.');
@@ -64,11 +65,13 @@ export default function PaymentModal({
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         status: 'unpaid',
+        shouldPrint: false,
       });
     } else {
       onConfirmPayment({
         paymentMethod: method,
         status: 'paid',
+        shouldPrint,
       });
     }
   }
@@ -152,11 +155,22 @@ export default function PaymentModal({
           </div>
         )}
 
-        <div className="modal-actions" style={{ marginTop: 20 }}>
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn green" onClick={handleComplete}>
-            {method === 'udhaar' ? 'Save as Udhaar' : 'Confirm & Print'}
-          </button>
+        <div className="modal-actions" style={{ marginTop: 20, display: 'flex', gap: 8 }}>
+          <button className="btn ghost" onClick={onClose} style={{ flex: 1 }}>Cancel</button>
+          {method === 'udhaar' ? (
+            <button className="btn green" style={{ flex: 2 }} onClick={() => handleComplete(false)}>
+              📋 Save as Udhaar
+            </button>
+          ) : (
+            <>
+              <button className="btn green" style={{ flex: 1.5 }} onClick={() => handleComplete(false)}>
+                ✔ Complete Only
+              </button>
+              <button className="btn primary" style={{ flex: 1.5 }} onClick={() => handleComplete(true)}>
+                🖨️ Save & Print
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../auth/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../api';
 
 interface KdsTicket {
   id: string | number;
@@ -37,8 +38,44 @@ export default function KdsPage() {
   const navigate = useNavigate();
   const [tickets, setTickets] = useState<KdsTicket[]>([]);
 
+  // Resolve Store ID & Store Name from URL params (QR code pairing), localStorage, or logged-in User
+  const searchParams = new URLSearchParams(window.location.search);
+  const queryStoreId = searchParams.get('store');
+  const queryStoreName = searchParams.get('name');
+
+  if (queryStoreId) {
+    localStorage.setItem('billkaro_kds_store_id', queryStoreId);
+    if (queryStoreName) localStorage.setItem('billkaro_kds_store_name', queryStoreName);
+  }
+
+  const activeStoreId = queryStoreId || localStorage.getItem('billkaro_kds_store_id') || (user ? String(user.id) : null);
+  const activeStoreName = queryStoreName || localStorage.getItem('billkaro_kds_store_name') || user?.storeName || 'Store';
+
+  // Fetch initial active tickets for the paired store
   useEffect(() => {
-    if (!user) return;
+    if (!activeStoreId) return;
+    api
+      .get(`/bills/kds/orders?store=${activeStoreId}`)
+      .then((res) => {
+        if (Array.isArray(res.data?.bills)) {
+          const loaded: KdsTicket[] = res.data.bills.map((b: any) => ({
+            id: b.id,
+            label: b.label || 'Order',
+            items: b.items || [],
+            total: b.total,
+            paymentMethod: b.paymentMethod,
+            createdAt: b.createdAt,
+            status: 'preparing',
+          }));
+          setTickets(loaded);
+        }
+      })
+      .catch((err) => console.warn('Could not fetch active KDS orders:', err));
+  }, [activeStoreId]);
+
+  // Connect WebSockets for live order stream
+  useEffect(() => {
+    if (!activeStoreId) return;
 
     const socketUrl = import.meta.env.VITE_API_URL
       ? import.meta.env.VITE_API_URL.replace('/api', '')
@@ -49,7 +86,7 @@ export default function KdsPage() {
     });
 
     socket.on('connect', () => {
-      socket.emit('join_store', user.id);
+      socket.emit('join_store', activeStoreId);
     });
 
     socket.on('kds:new-order', (ticket: KdsTicket) => {
@@ -66,7 +103,7 @@ export default function KdsPage() {
     return () => {
       socket.disconnect();
     };
-  }, [user]);
+  }, [activeStoreId]);
 
   function updateStatus(ticketId: string | number, status: 'preparing' | 'ready') {
     setTickets((prev) =>
@@ -83,7 +120,7 @@ export default function KdsPage() {
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, borderBottom: '1px solid #1e293b', paddingBottom: 16 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '1.6rem', color: '#38bdf8' }}>🍳 Kitchen Display System (KDS)</h2>
-          <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Store: {user?.storeName} • Live WebSocket Order Stream</div>
+          <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Store: {activeStoreName} • Live WebSockets Stream</div>
         </div>
         <button className="btn ghost" onClick={() => navigate('/')}>
           ← Return to Billing POS

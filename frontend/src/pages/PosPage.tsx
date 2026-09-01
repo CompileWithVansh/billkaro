@@ -328,6 +328,7 @@ export default function PosPage() {
     customerName?: string;
     customerPhone?: string;
     status: 'paid' | 'unpaid';
+    shouldPrint?: boolean;
   }) {
     const payload = {
       label: activeBill.label,
@@ -355,7 +356,7 @@ export default function PosPage() {
       alert('⚡ Offline Mode: Bill saved locally! Will sync automatically when back online.');
     }
 
-    if (details.paymentMethod !== 'udhaar' && user) {
+    if (details.shouldPrint && details.paymentMethod !== 'udhaar' && user) {
       printBill({ bill: activeBill, user, subtotal, tax, total });
     }
 

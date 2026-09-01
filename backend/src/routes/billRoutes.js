@@ -3,9 +3,34 @@ import { billsRepo, itemsRepo } from '../db.js';
 import { requireAuth } from '../auth.js';
 
 const router = express.Router();
-router.use(requireAuth);
-
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+// Public KDS orders endpoint for paired kitchen screens
+router.get(
+  '/kds/orders',
+  wrap(async (req, res) => {
+    const storeId = req.query.store;
+    if (!storeId) return res.status(400).json({ error: 'Store ID is required' });
+    const rows = await billsRepo.listByUser(storeId);
+    res.json({
+      bills: rows.map((r) => ({
+        id: r.id,
+        label: r.label,
+        items: typeof r.items_json === 'string' ? JSON.parse(r.items_json) : r.items_json,
+        subtotal: r.subtotal,
+        tax: r.tax,
+        total: r.total,
+        paymentMethod: r.payment_method || 'upi',
+        customerName: r.customer_name || null,
+        customerPhone: r.customer_phone || null,
+        status: r.status,
+        createdAt: r.created_at,
+      })),
+    });
+  })
+);
+
+router.use(requireAuth);
 
 // POST /api/bills
 router.post(

@@ -1,35 +1,40 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { api } from '../api';
+import { useAuth } from '../auth/AuthContext';
 
 interface Props {
   onClose: () => void;
 }
 
 export default function ConnectKdsModal({ onClose }: Props) {
-  const [targetUrl, setTargetUrl] = useState<string>(`${window.location.origin}/kds`);
+  const { user } = useAuth();
+  const [targetUrl, setTargetUrl] = useState<string>('');
   const [qrUrl, setQrUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function resolveTargetUrl() {
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      let baseUrl = window.location.origin;
+
       if (isLocalhost) {
         try {
           const res = await api.get('/info');
-          if (res.data?.networkKdsUrl) {
-            setTargetUrl(res.data.networkKdsUrl);
-            return;
+          if (res.data?.localIp) {
+            baseUrl = `http://${res.data.localIp}:${res.data.port || 4000}`;
           }
         } catch (err) {
           console.warn('Could not fetch local network IP:', err);
         }
       }
-      setTargetUrl(`${window.location.origin}/kds`);
+
+      const storeIdParam = user?.id ? `?store=${user.id}&name=${encodeURIComponent(user.storeName || 'Store')}` : '';
+      setTargetUrl(`${baseUrl}/kds${storeIdParam}`);
     }
 
     resolveTargetUrl();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!targetUrl) return;
