@@ -64,7 +64,7 @@ function billTotal(b: Bill, taxPercent: number) {
   return { subtotal, tax, total: +(subtotal + tax).toFixed(2) };
 }
 
-function loadTabs(): { bills: Bill[] } | null {
+function loadTabs(): { bills: Bill[]; activeId?: string } | null {
   try {
     const raw = localStorage.getItem(TABS_KEY);
     if (!raw) return null;
@@ -84,9 +84,22 @@ export default function PosPage() {
   const [locked, setLocked] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  const persisted = loadTabs();
+  const persisted = useMemo(() => loadTabs(), []);
   const [bills, setBills] = useState<Bill[]>(persisted?.bills ?? [newBill(1)]);
-  const [activeId, setActiveId] = useState<string>(persisted?.bills?.[0]?.id ?? '');
+  const [activeId, setActiveId] = useState<string>(
+    persisted?.activeId && persisted.bills.some((b) => b.id === persisted.activeId)
+      ? persisted.activeId
+      : (persisted?.bills?.[0]?.id ?? '')
+  );
+
+  // Auto-persist all open tabs and draft cart lines to localStorage on every change
+  useEffect(() => {
+    try {
+      localStorage.setItem(TABS_KEY, JSON.stringify({ bills, activeId }));
+    } catch (e) {
+      console.warn('Failed to persist tabs to localStorage:', e);
+    }
+  }, [bills, activeId]);
 
   // Modals
   const [showSettings, setShowSettings] = useState(false);
