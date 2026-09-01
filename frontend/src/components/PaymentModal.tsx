@@ -7,15 +7,14 @@ interface Props {
   payeeName: string | null;
   storeName: string;
   onClose: () => void;
-  onMarkPaid: () => void;
+  onConfirmPayment: (details: {
+    paymentMethod: 'upi' | 'cash' | 'udhaar';
+    customerName?: string;
+    customerPhone?: string;
+    status: 'paid' | 'unpaid';
+  }) => void;
 }
 
-/**
- * Builds a standard UPI payment deep link and renders it as a QR code.
- * Any UPI app (Paytm, PhonePe, GPay, BHIM) can scan it. The bill amount is
- * injected into the "am" parameter so the customer sees the exact amount.
- * No paid API keys are required — this is generated fully on the device.
- */
 function buildUpiLink(upiId: string, payeeName: string, amount: number) {
   const params = new URLSearchParams({
     pa: upiId,                       // payee address (UPI id)
@@ -33,44 +32,131 @@ export default function PaymentModal({
   payeeName,
   storeName,
   onClose,
-  onMarkPaid,
+  onConfirmPayment,
 }: Props) {
+  const [method, setMethod] = useState<'upi' | 'cash' | 'udhaar'>('upi');
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [dataUrl, setDataUrl] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (method !== 'upi') return;
     if (!upiId) {
       setError('No UPI ID set. Add one in Settings to generate a payment QR.');
       return;
     }
+    setError('');
     const link = buildUpiLink(upiId, payeeName || storeName, amount);
     QRCode.toDataURL(link, { width: 320, margin: 1 })
       .then(setDataUrl)
       .catch(() => setError('Could not generate QR code.'));
-  }, [amount, upiId, payeeName, storeName]);
+  }, [amount, upiId, payeeName, storeName, method]);
+
+  function handleComplete() {
+    if (method === 'udhaar') {
+      if (!customerName.trim()) {
+        setError('Please enter Customer Name for Udhaar credit.');
+        return;
+      }
+      onConfirmPayment({
+        paymentMethod: 'udhaar',
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        status: 'unpaid',
+      });
+    } else {
+      onConfirmPayment({
+        paymentMethod: method,
+        status: 'paid',
+      });
+    }
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Scan to pay</h3>
+        <h3>Complete Payment</h3>
         <div className="qr-amount">₹{amount.toFixed(2)}</div>
-        <div className="qr-note">Pay to {payeeName || storeName}</div>
 
-        {error ? (
-          <div className="error-box">{error}</div>
-        ) : (
-          <div className="qr-box">
-            {dataUrl ? (
-              <img src={dataUrl} alt="Payment QR" width={288} height={288} />
+        <div className="payment-tabs" style={{ display: 'flex', gap: 8, margin: '16px 0' }}>
+          <button
+            type="button"
+            className={`btn ${method === 'upi' ? 'primary' : 'ghost'}`}
+            style={{ flex: 1 }}
+            onClick={() => setMethod('upi')}
+          >
+            📱 UPI QR
+          </button>
+          <button
+            type="button"
+            className={`btn ${method === 'cash' ? 'primary' : 'ghost'}`}
+            style={{ flex: 1 }}
+            onClick={() => setMethod('cash')}
+          >
+            💵 Cash
+          </button>
+          <button
+            type="button"
+            className={`btn ${method === 'udhaar' ? 'primary' : 'ghost'}`}
+            style={{ flex: 1 }}
+            onClick={() => setMethod('udhaar')}
+          >
+            📋 Udhaar
+          </button>
+        </div>
+
+        {method === 'upi' && (
+          <>
+            <div className="qr-note">Scan with any UPI App (Paytm/PhonePe/GPay)</div>
+            {error ? (
+              <div className="error-box">{error}</div>
             ) : (
-              <div style={{ color: '#111', padding: 40 }}>Generating…</div>
+              <div className="qr-box">
+                {dataUrl ? (
+                  <img src={dataUrl} alt="Payment QR" width={288} height={288} />
+                ) : (
+                  <div style={{ color: '#111', padding: 40 }}>Generating QR…</div>
+                )}
+              </div>
             )}
+          </>
+        )}
+
+        {method === 'cash' && (
+          <div style={{ textAlign: 'center', padding: '24px 0', fontSize: '1.1rem' }}>
+            Collect <strong>₹{amount.toFixed(2)}</strong> cash from customer.
           </div>
         )}
 
-        <div className="modal-actions">
-          <button className="btn ghost" onClick={onClose}>Close</button>
-          <button className="btn green" onClick={onMarkPaid}>Mark paid & clear</button>
+        {method === 'udhaar' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '12px 0' }}>
+            <div className="field">
+              <label>Customer Name *</label>
+              <input
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="e.g. Ramesh Kumar"
+                autoFocus
+              />
+            </div>
+            <div className="field">
+              <label>Customer Phone (optional)</label>
+              <input
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="e.g. 9876543210"
+              />
+            </div>
+            {error && <div className="error-box">{error}</div>}
+          </div>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: 20 }}>
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn green" onClick={handleComplete}>
+            {method === 'udhaar' ? 'Save as Udhaar' : 'Confirm & Print'}
+          </button>
         </div>
       </div>
     </div>
