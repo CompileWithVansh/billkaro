@@ -8,11 +8,13 @@ interface Props {
 
 export default function SettingsModal({ onClose }: Props) {
   const { user, updateUser, logout } = useAuth();
-  const [storeName, setStoreName] = useState(user?.storeName ?? '');
-  const [upiId, setUpiId] = useState(user?.upiId ?? '');
-  const [payeeName, setPayeeName] = useState(user?.payeeName ?? '');
+  const [storeName, setStoreName]   = useState(user?.storeName ?? '');
+  const [address, setAddress]       = useState(user?.address   ?? '');
+  const [phone, setPhone]           = useState(user?.phone     ?? '');
+  const [upiId, setUpiId]           = useState(user?.upiId     ?? '');
+  const [payeeName, setPayeeName]   = useState(user?.payeeName ?? '');
   const [taxPercent, setTaxPercent] = useState(String(user?.taxPercent ?? 0));
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy]   = useState(false);
   const [error, setError] = useState('');
 
   async function save() {
@@ -20,9 +22,11 @@ export default function SettingsModal({ onClose }: Props) {
     setError('');
     try {
       const res = await api.put('/auth/settings', {
-        storeName: storeName.trim(),
-        upiId: upiId.trim(),
-        payeeName: payeeName.trim(),
+        storeName:  storeName.trim(),
+        address:    address.trim()  || null,
+        phone:      phone.trim()    || null,
+        upiId:      upiId.trim()    || null,
+        payeeName:  payeeName.trim() || null,
         taxPercent: Number(taxPercent) || 0,
       });
       updateUser(res.data.user);
@@ -40,12 +44,34 @@ export default function SettingsModal({ onClose }: Props) {
         <h3>Store settings</h3>
         {error && <div className="error-box">{error}</div>}
 
+        <div className="settings-section-label">Store info</div>
+
         <div className="field">
-          <label>Store name</label>
+          <label>Store / restaurant name</label>
           <input value={storeName} onChange={(e) => setStoreName(e.target.value)} />
         </div>
         <div className="field">
-          <label>UPI ID (payment link)</label>
+          <label>Address — printed on receipts</label>
+          <input
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="e.g. 12 MG Road, Sector 5, Delhi"
+          />
+        </div>
+        <div className="field">
+          <label>Contact number — printed on receipts</label>
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="e.g. +91 98765 43210"
+          />
+        </div>
+
+        <div className="settings-section-label">Payments</div>
+
+        <div className="field">
+          <label>UPI ID (for payment QR)</label>
           <input value={upiId} onChange={(e) => setUpiId(e.target.value)} placeholder="yourshop@paytm" />
         </div>
         <div className="field">

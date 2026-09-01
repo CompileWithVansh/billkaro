@@ -12,7 +12,9 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   // register-only
   const [storeName, setStoreName] = useState('');
-  const [upiId, setUpiId] = useState('');
+  const [address, setAddress]     = useState('');
+  const [phone, setPhone]         = useState('');
+  const [upiId, setUpiId]         = useState('');
   const [payeeName, setPayeeName] = useState('');
   const [taxPercent, setTaxPercent] = useState('');
 
@@ -25,11 +27,13 @@ export default function AuthPage() {
         await login(email.trim(), password);
       } else {
         await register({
-          storeName: storeName.trim(),
-          email: email.trim(),
+          storeName:  storeName.trim(),
+          email:      email.trim(),
           password,
-          upiId: upiId.trim() || undefined,
-          payeeName: payeeName.trim() || undefined,
+          address:    address.trim()   || undefined,
+          phone:      phone.trim()     || undefined,
+          upiId:      upiId.trim()     || undefined,
+          payeeName:  payeeName.trim() || undefined,
           taxPercent: taxPercent ? Number(taxPercent) : 0,
         });
       }
@@ -90,7 +94,24 @@ export default function AuthPage() {
           {mode === 'register' && (
             <>
               <div className="field">
-                <label>UPI ID (for payment QR) — optional now</label>
+                <label>Address — printed on receipts (optional)</label>
+                <input
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="e.g. 12 MG Road, Sector 5, Delhi"
+                />
+              </div>
+              <div className="field">
+                <label>Contact number — printed on receipts (optional)</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="e.g. +91 98765 43210"
+                />
+              </div>
+              <div className="field">
+                <label>UPI ID (for payment QR) — optional</label>
                 <input
                   value={upiId}
                   onChange={(e) => setUpiId(e.target.value)}

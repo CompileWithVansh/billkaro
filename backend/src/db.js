@@ -60,10 +60,17 @@ export async function initDb() {
       password_hash TEXT NOT NULL,
       upi_id        TEXT,
       payee_name    TEXT,
+      address       TEXT,
+      phone         TEXT,
       currency      TEXT NOT NULL DEFAULT 'INR',
       tax_percent   REAL NOT NULL DEFAULT 0,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    -- Migrate existing tables: add columns that may not exist yet.
+    -- IF NOT EXISTS prevents errors on a fresh DB that already has them.
+    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS address TEXT;
+    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS phone   TEXT;
 
     CREATE TABLE IF NOT EXISTS billkaro_items (
       id          SERIAL PRIMARY KEY,
@@ -104,11 +111,11 @@ export const usersRepo = {
     const { rows } = await getPool().query('SELECT * FROM billkaro_users WHERE id = $1', [Number(id)]);
     return rows[0] || null;
   },
-  async create({ storeName, email, passwordHash, upiId, payeeName, taxPercent }) {
+  async create({ storeName, email, passwordHash, upiId, payeeName, taxPercent, address, phone }) {
     const { rows } = await getPool().query(
-      `INSERT INTO billkaro_users (store_name, email, password_hash, upi_id, payee_name, tax_percent)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [storeName, email, passwordHash, upiId || null, payeeName || storeName, Number(taxPercent) || 0]
+      `INSERT INTO billkaro_users (store_name, email, password_hash, upi_id, payee_name, tax_percent, address, phone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [storeName, email, passwordHash, upiId || null, payeeName || storeName, Number(taxPercent) || 0, address || null, phone || null]
     );
     return rows[0];
   },
@@ -118,13 +125,17 @@ export const usersRepo = {
          store_name  = COALESCE($1, store_name),
          upi_id      = COALESCE($2, upi_id),
          payee_name  = COALESCE($3, payee_name),
-         tax_percent = COALESCE($4, tax_percent)
-       WHERE id = $5 RETURNING *`,
+         tax_percent = COALESCE($4, tax_percent),
+         address     = COALESCE($5, address),
+         phone       = COALESCE($6, phone)
+       WHERE id = $7 RETURNING *`,
       [
-        fields.storeName ?? null,
-        fields.upiId ?? null,
-        fields.payeeName ?? null,
+        fields.storeName  ?? null,
+        fields.upiId      ?? null,
+        fields.payeeName  ?? null,
         fields.taxPercent == null ? null : Number(fields.taxPercent),
+        fields.address    ?? null,
+        fields.phone      ?? null,
         Number(id),
       ]
     );

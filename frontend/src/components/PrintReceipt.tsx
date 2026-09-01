@@ -74,7 +74,13 @@ export function printBill({ bill, user, subtotal, tax, total }: Props) {
       text-align: center;
       text-transform: uppercase;
       letter-spacing: 1px;
-      margin-bottom: 6px;
+      margin-bottom: 2px;
+    }
+    .store-sub {
+      text-align: center;
+      font-size: 10px;
+      color: #444;
+      margin-bottom: 2px;
     }
 
     /* ---------- Dividers ---------- */
@@ -137,6 +143,8 @@ export function printBill({ bill, user, subtotal, tax, total }: Props) {
 </head>
 <body>
   <div class="store-name">${escHtml(user.storeName)}</div>
+  ${user.address ? `<div class="store-sub">${escHtml(user.address)}</div>` : ''}
+  ${user.phone   ? `<div class="store-sub">📞 ${escHtml(user.phone)}</div>` : ''}
 
   <hr class="divider" />
 

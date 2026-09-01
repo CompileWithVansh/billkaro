@@ -18,6 +18,8 @@ export interface RegisterData {
   upiId?: string;
   payeeName?: string;
   taxPercent?: number;
+  address?: string;
+  phone?: string;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);

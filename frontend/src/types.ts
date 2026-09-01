@@ -4,6 +4,8 @@ export interface User {
   email: string;
   upiId: string | null;
   payeeName: string | null;
+  address: string | null;
+  phone: string | null;
   currency: string;
   taxPercent: number;
 }

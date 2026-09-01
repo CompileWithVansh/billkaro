@@ -12,6 +12,8 @@ function publicUser(u) {
     email: u.email,
     upiId: u.upi_id,
     payeeName: u.payee_name,
+    address: u.address,
+    phone: u.phone,
     currency: u.currency,
     taxPercent: u.tax_percent,
   };
@@ -24,7 +26,7 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 router.post(
   '/register',
   wrap(async (req, res) => {
-    const { storeName, email, password, upiId, payeeName, taxPercent } = req.body || {};
+    const { storeName, email, password, upiId, payeeName, taxPercent, address, phone } = req.body || {};
     if (!storeName || !email || !password) {
       return res.status(400).json({ error: 'storeName, email and password are required' });
     }
@@ -39,6 +41,8 @@ router.post(
       upiId,
       payeeName,
       taxPercent,
+      address,
+      phone,
     });
     const token = signToken({ sub: user.id });
     res.status(201).json({ token, user: publicUser(user) });
@@ -78,8 +82,8 @@ router.put(
   '/settings',
   requireAuth,
   wrap(async (req, res) => {
-    const { storeName, upiId, payeeName, taxPercent } = req.body || {};
-    const updated = await usersRepo.update(req.userId, { storeName, upiId, payeeName, taxPercent });
+    const { storeName, upiId, payeeName, taxPercent, address, phone } = req.body || {};
+    const updated = await usersRepo.update(req.userId, { storeName, upiId, payeeName, taxPercent, address, phone });
     if (!updated) return res.status(404).json({ error: 'User not found' });
     res.json({ user: publicUser(updated) });
   })
