@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
@@ -26,6 +28,7 @@ function ensureDb() {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
+const httpServer = createServer(app);
 const PORT = process.env.PORT || 4000;
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -41,9 +44,7 @@ if (isProd && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16)) {
 // rate limiting / IPs work correctly.
 app.set('trust proxy', 1);
 
-// CORS: when the frontend is served by this same server (single-process
-// deploy), requests are same-origin and CORS is irrelevant. If you host the
-// frontend separately, list its origin(s) in CORS_ORIGIN (comma separated).
+// CORS setup
 const origins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map((s) => s.trim())
@@ -56,15 +57,33 @@ app.use(
 );
 app.use(express.json({ limit: '1mb' }));
 
+// ---------------- Socket.io for Real-time KDS ----------------
+const io = new Server(httpServer, {
+  cors: {
+    origin: origins.length ? origins : '*',
+  },
+});
+app.set('io', io);
+
+io.on('connection', (socket) => {
+  socket.on('join_store', (userId) => {
+    if (userId) {
+      socket.join(`store_${userId}`);
+    }
+  });
+
+  socket.on('kds:update-status', ({ userId, orderId, status }) => {
+    if (userId && orderId) {
+      io.to(`store_${userId}`).emit('kds:order-updated', { orderId, status });
+    }
+  });
+});
+
 // ---------------- API ----------------
-// Health check does NOT touch the DB, so the platform can mark the service
-// live even while the database is still waking up.
 app.get('/api/health', (_req, res) =>
   res.json({ ok: true, service: 'billkaro', env: isProd ? 'production' : 'development' })
 );
 
-// Ensure the schema exists before any data route runs. Cheap after the first
-// success (memoized); retries if the DB was momentarily unreachable.
 app.use(['/api/auth', '/api/items', '/api/bills'], (_req, res, next) => {
   ensureDb()
     .then(() => next())
@@ -79,14 +98,10 @@ app.use('/api/items', itemRoutes);
 app.use('/api/bills', billRoutes);
 
 // ---------------- Static frontend ----------------
-// In production we serve the built SPA (frontend/dist) from this same server,
-// so the whole app runs as ONE process on ONE URL — no CORS, no second host.
 const distPath = join(__dirname, '..', '..', 'frontend', 'dist');
 if (existsSync(distPath)) {
   app.use(express.static(distPath));
 
-  // SPA fallback: any non-API route returns index.html so client-side routing
-  // (e.g. /login) works on hard refresh.
   app.get(/^(?!\/api\/).*/, (_req, res) => {
     res.sendFile(join(distPath, 'index.html'));
   });
@@ -106,10 +121,7 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start listening immediately so the platform health check passes even if the
-// database is still cold. Kick off schema init in the background; data routes
-// also guarantee it via ensureDb(), retrying as needed.
-app.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(
     `BillKaro running on http://0.0.0.0:${PORT} (${isProd ? 'production' : 'development'})`
   );
