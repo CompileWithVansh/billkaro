@@ -23,7 +23,7 @@ export default function App() {
       />
       <Route
         path="/kds"
-        element={user ? <KdsPage /> : <Navigate to="/login" replace />}
+        element={<KdsPage />}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
