@@ -5,36 +5,30 @@ import { requireAuth } from '../auth.js';
 const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-// Public KDS orders endpoint for paired kitchen screens (Only active/recent bills within last 2 hours)
+// Active in-memory KDS tickets store per store ID
+const activeKdsQueue = new Map();
+
+// Public KDS orders endpoint for paired kitchen screens (Only active kitchen tickets)
 router.get(
   '/kds/orders',
   wrap(async (req, res) => {
     const storeId = req.query.store;
     if (!storeId) return res.status(400).json({ error: 'Store ID is required' });
+    const tickets = activeKdsQueue.get(String(storeId)) || [];
+    res.json({ bills: tickets });
+  })
+);
 
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const { rows } = await getPool().query(
-      `SELECT * FROM billkaro_bills 
-       WHERE user_id = $1 AND created_at >= $2 
-       ORDER BY id DESC LIMIT 50`,
-      [Number(storeId), twoHoursAgo]
-    );
-
-    res.json({
-      bills: rows.map((r) => ({
-        id: r.id,
-        label: r.label,
-        items: typeof r.items_json === 'string' ? JSON.parse(r.items_json) : r.items_json,
-        subtotal: r.subtotal,
-        tax: r.tax,
-        total: r.total,
-        paymentMethod: r.payment_method || 'upi',
-        customerName: r.customer_name || null,
-        customerPhone: r.customer_phone || null,
-        status: r.status,
-        createdAt: r.created_at,
-      })),
-    });
+// Public/Paired endpoint to clear a ticket from active KDS queue when cook clears it
+router.post(
+  '/kds/clear-ticket',
+  wrap(async (req, res) => {
+    const { storeId, ticketId } = req.body || {};
+    if (storeId && ticketId) {
+      const existing = activeKdsQueue.get(String(storeId)) || [];
+      activeKdsQueue.set(String(storeId), existing.filter((t) => String(t.id) !== String(ticketId)));
+    }
+    res.json({ ok: true });
   })
 );
 
@@ -48,7 +42,7 @@ router.post(
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Cart items required to send ticket to kitchen' });
     }
-    const io = req.app.get('io');
+    const storeId = String(req.userId);
     const orderTicket = {
       id: 'KDS-' + Date.now().toString().slice(-4),
       label: label || 'Kitchen Ticket',
@@ -57,14 +51,20 @@ router.post(
       createdAt: new Date().toISOString(),
       status: 'preparing',
     };
+
+    // Store in active in-memory KDS queue for this store
+    const existing = activeKdsQueue.get(storeId) || [];
+    activeKdsQueue.set(storeId, [orderTicket, ...existing.filter((t) => t.id !== orderTicket.id)]);
+
+    const io = req.app.get('io');
     if (io) {
-      io.to(`store_${req.userId}`).emit('kds:new-order', orderTicket);
+      io.to(`store_${storeId}`).emit('kds:new-order', orderTicket);
     }
     res.json({ ok: true, ticket: orderTicket });
   })
 );
 
-// POST /api/bills
+// POST /api/bills (Payment checkout — strictly saves to database for history/reports; does NOT send to KDS)
 router.post(
   '/',
   wrap(async (req, res) => {
@@ -86,21 +86,6 @@ router.post(
 
     // Auto-deduct stock for sold items
     await itemsRepo.deductStock(req.userId, items);
-
-    // Broadcast live order ticket to Kitchen Display System (KDS) sockets
-    const io = req.app.get('io');
-    if (io) {
-      const orderTicket = {
-        id: bill.id,
-        label: bill.label || 'Order',
-        items,
-        total: bill.total,
-        paymentMethod: bill.payment_method,
-        createdAt: bill.created_at,
-        status: 'preparing',
-      };
-      io.to(`store_${req.userId}`).emit('kds:new-order', orderTicket);
-    }
 
     res.status(201).json({ id: bill.id, bill });
   })

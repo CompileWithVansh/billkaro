@@ -180,6 +180,9 @@ export default function KdsPage() {
 
   function clearTicket(ticketId: string | number) {
     setTickets((prev) => prev.filter((t) => t.id !== ticketId));
+    if (pairedStoreId) {
+      api.post('/bills/kds/clear-ticket', { storeId: pairedStoreId, ticketId }).catch(() => {});
+    }
   }
 
   // If unpaired, display the 4-Digit PIN Keypad Pairing View
