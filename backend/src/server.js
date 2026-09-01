@@ -79,10 +79,35 @@ io.on('connection', (socket) => {
   });
 });
 
+import os from 'os';
+
+function getLocalNetworkIp() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
 // ---------------- API ----------------
 app.get('/api/health', (_req, res) =>
   res.json({ ok: true, service: 'billkaro', env: isProd ? 'production' : 'development' })
 );
+
+app.get('/api/info', (req, res) => {
+  const localIp = getLocalNetworkIp();
+  const host = req.get('host') || '';
+  res.json({
+    localIp,
+    port: PORT,
+    host,
+    networkKdsUrl: `http://${localIp}:${PORT}/kds`,
+  });
+});
 
 app.use(['/api/auth', '/api/items', '/api/bills'], (_req, res, next) => {
   ensureDb()

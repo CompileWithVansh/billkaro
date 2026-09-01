@@ -1,24 +1,45 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import { api } from '../api';
 
 interface Props {
   onClose: () => void;
 }
 
 export default function ConnectKdsModal({ onClose }: Props) {
+  const [targetUrl, setTargetUrl] = useState<string>(`${window.location.origin}/kds`);
   const [qrUrl, setQrUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  const kdsUrl = `${window.location.origin}/kds`;
+  useEffect(() => {
+    async function resolveTargetUrl() {
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (isLocalhost) {
+        try {
+          const res = await api.get('/info');
+          if (res.data?.networkKdsUrl) {
+            setTargetUrl(res.data.networkKdsUrl);
+            return;
+          }
+        } catch (err) {
+          console.warn('Could not fetch local network IP:', err);
+        }
+      }
+      setTargetUrl(`${window.location.origin}/kds`);
+    }
+
+    resolveTargetUrl();
+  }, []);
 
   useEffect(() => {
-    QRCode.toDataURL(kdsUrl, { width: 280, margin: 2 })
+    if (!targetUrl) return;
+    QRCode.toDataURL(targetUrl, { width: 280, margin: 2 })
       .then((url) => setQrUrl(url))
       .catch((err) => console.error('Failed to generate QR:', err));
-  }, [kdsUrl]);
+  }, [targetUrl]);
 
   function handleCopy() {
-    navigator.clipboard.writeText(kdsUrl);
+    navigator.clipboard.writeText(targetUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -38,6 +59,7 @@ export default function ConnectKdsModal({ onClose }: Props) {
             padding: 16,
             borderRadius: 16,
             display: 'inline-flex',
+            flexDirection: 'column',
             justifyContent: 'center',
             alignItems: 'center',
             marginBottom: 16,
@@ -51,6 +73,10 @@ export default function ConnectKdsModal({ onClose }: Props) {
               Generating QR…
             </div>
           )}
+        </div>
+
+        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '6px 12px', fontSize: '0.8rem', color: '#38bdf8', fontFamily: 'monospace', marginBottom: 16 }}>
+          🔗 Network URL: {targetUrl}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
