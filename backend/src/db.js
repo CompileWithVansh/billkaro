@@ -64,6 +64,7 @@ export async function initDb() {
       phone         TEXT,
       currency      TEXT NOT NULL DEFAULT 'INR',
       tax_percent   REAL NOT NULL DEFAULT 0,
+      kds_pin       TEXT,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
@@ -71,11 +72,17 @@ export async function initDb() {
     -- IF NOT EXISTS prevents errors on a fresh DB that already has them.
     ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS address TEXT;
     ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS phone   TEXT;
+    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS kds_pin TEXT;
 
     ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS stock_quantity INTEGER DEFAULT NULL;
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'upi';
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT NULL;
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_phone TEXT DEFAULT NULL;
+
+    -- Generate KDS pairing PIN for any existing users with NULL kds_pin
+    UPDATE billkaro_users 
+    SET kds_pin = LPAD(FLOOR(RANDOM() * 9000 + 1000)::TEXT, 4, '0')
+    WHERE kds_pin IS NULL;
 
     CREATE TABLE IF NOT EXISTS billkaro_items (
       id             SERIAL PRIMARY KEY,
@@ -120,11 +127,23 @@ export const usersRepo = {
     const { rows } = await getPool().query('SELECT * FROM billkaro_users WHERE id = $1', [Number(id)]);
     return rows[0] || null;
   },
-  async create({ storeName, email, passwordHash, upiId, payeeName, taxPercent, address, phone }) {
+  async findByKdsPin(pin) {
+    const { rows } = await getPool().query('SELECT * FROM billkaro_users WHERE kds_pin = $1', [String(pin).trim()]);
+    return rows[0] || null;
+  },
+  async updateKdsPin(userId, pin) {
     const { rows } = await getPool().query(
-      `INSERT INTO billkaro_users (store_name, email, password_hash, upi_id, payee_name, tax_percent, address, phone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [storeName, email, passwordHash, upiId || null, payeeName || storeName, Number(taxPercent) || 0, address || null, phone || null]
+      'UPDATE billkaro_users SET kds_pin = $1 WHERE id = $2 RETURNING *',
+      [String(pin).trim(), Number(userId)]
+    );
+    return rows[0] || null;
+  },
+  async create({ storeName, email, passwordHash, upiId, payeeName, taxPercent, address, phone }) {
+    const randomPin = Math.floor(1000 + Math.random() * 9000).toString();
+    const { rows } = await getPool().query(
+      `INSERT INTO billkaro_users (store_name, email, password_hash, upi_id, payee_name, tax_percent, address, phone, kds_pin)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [storeName, email, passwordHash, upiId || null, payeeName || storeName, Number(taxPercent) || 0, address || null, phone || null, randomPin]
     );
     return rows[0];
   },

@@ -16,11 +16,37 @@ function publicUser(u) {
     phone: u.phone,
     currency: u.currency,
     taxPercent: u.tax_percent,
+    kdsPin: u.kds_pin,
   };
 }
 
 // small async wrapper so thrown errors reach the error handler
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+// POST /api/auth/kds-pair (Public endpoint for Kitchen Display pairing)
+router.post(
+  '/kds-pair',
+  wrap(async (req, res) => {
+    const { pin } = req.body || {};
+    if (!pin) return res.status(400).json({ error: 'Pairing PIN is required' });
+    const user = await usersRepo.findByKdsPin(String(pin).trim());
+    if (!user) return res.status(401).json({ error: 'Invalid Kitchen Pairing PIN' });
+    const token = signToken({ sub: user.id, role: 'kds' });
+    res.json({ ok: true, token, storeId: user.id, storeName: user.store_name });
+  })
+);
+
+// POST /api/auth/kds-reset-pin (Authenticated: Regenerate new KDS pairing PIN)
+router.post(
+  '/kds-reset-pin',
+  requireAuth,
+  wrap(async (req, res) => {
+    const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+    const user = await usersRepo.updateKdsPin(req.userId, newPin);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ ok: true, kdsPin: user.kds_pin });
+  })
+);
 
 // POST /api/auth/register
 router.post(

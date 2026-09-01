@@ -8,6 +8,7 @@ export interface User {
   phone: string | null;
   currency: string;
   taxPercent: number;
+  kdsPin?: string;
 }
 
 export interface Item {

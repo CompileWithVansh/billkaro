@@ -8,10 +8,11 @@ interface Props {
 }
 
 export default function ConnectKdsModal({ onClose }: Props) {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [targetUrl, setTargetUrl] = useState<string>('');
   const [qrUrl, setQrUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     async function resolveTargetUrl() {
@@ -43,6 +44,22 @@ export default function ConnectKdsModal({ onClose }: Props) {
       .catch((err) => console.error('Failed to generate QR:', err));
   }, [targetUrl]);
 
+  async function handleResetPin() {
+    if (!window.confirm('Regenerate a new Kitchen Pairing PIN? Existing connected kitchen screens will need to re-enter the new PIN.')) return;
+    try {
+      setResetting(true);
+      const res = await api.post('/auth/kds-reset-pin');
+      if (user && res.data?.kdsPin) {
+        updateUser({ ...user, kdsPin: res.data.kdsPin });
+      }
+    } catch (err) {
+      console.error('Failed to reset PIN:', err);
+      alert('Could not reset PIN.');
+    } finally {
+      setResetting(false);
+    }
+  }
+
   function handleCopy() {
     navigator.clipboard.writeText(targetUrl);
     setCopied(true);
@@ -51,11 +68,38 @@ export default function ConnectKdsModal({ onClose }: Props) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, textAlign: 'center' }}>
-        <h3>📲 Connect Kitchen Display (KDS)</h3>
-        <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: 16 }}>
-          No typing required! Scan this QR code from any kitchen phone or tablet to connect immediately.
-        </p>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480, textAlign: 'center' }}>
+        <h3>📲 Connect Kitchen Display Screen</h3>
+
+        {/* 4-Digit PIN Card */}
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+            border: '1px solid #38bdf8',
+            borderRadius: 16,
+            padding: 16,
+            margin: '16px 0',
+          }}
+        >
+          <div style={{ fontSize: '0.85rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>
+            Kitchen Pairing PIN
+          </div>
+          <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#38bdf8', letterSpacing: 6, margin: '6px 0' }}>
+            {user?.kdsPin || '••••'}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
+            Open <strong>/kds</strong> on any kitchen phone/tablet & enter this 4-digit PIN!
+          </div>
+          <button
+            type="button"
+            className="btn ghost"
+            style={{ marginTop: 8, padding: '4px 12px', fontSize: '0.75rem' }}
+            disabled={resetting}
+            onClick={handleResetPin}
+          >
+            🔄 Regenerate PIN
+          </button>
+        </div>
 
         {/* QR Code Container */}
         <div
@@ -67,37 +111,29 @@ export default function ConnectKdsModal({ onClose }: Props) {
             flexDirection: 'column',
             justifyContent: 'center',
             alignItems: 'center',
-            marginBottom: 16,
+            marginBottom: 12,
             boxShadow: '0 10px 25px rgba(0,0,0,0.4)',
           }}
         >
           {qrUrl ? (
-            <img src={qrUrl} alt="Kitchen KDS QR Code" style={{ width: 220, height: 220, borderRadius: 8 }} />
+            <img src={qrUrl} alt="Kitchen KDS QR Code" style={{ width: 200, height: 200, borderRadius: 8 }} />
           ) : (
-            <div style={{ width: 220, height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000' }}>
+            <div style={{ width: 200, height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000' }}>
               Generating QR…
             </div>
           )}
         </div>
 
-        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '6px 12px', fontSize: '0.8rem', color: '#38bdf8', fontFamily: 'monospace', marginBottom: 16 }}>
-          🔗 Network URL: {targetUrl}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
           <button className="btn primary block" onClick={handleCopy}>
-            {copied ? '✔ Link Copied to Clipboard!' : '📋 Copy Link (Send via WhatsApp)'}
+            {copied ? '✔ Direct KDS Link Copied!' : '📋 Copy Direct Kitchen Link'}
           </button>
           <button
             className="btn ghost block"
-            onClick={() => window.open('/kds', '_blank')}
+            onClick={() => window.open(targetUrl, '_blank')}
           >
-            ↗️ Open Kitchen Screen in New Window
+            ↗️ Open Kitchen Display in New Tab
           </button>
-        </div>
-
-        <div style={{ background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: 12, padding: 12, fontSize: '0.85rem', color: '#38bdf8', textAlign: 'left' }}>
-          💡 <strong>Pro-Tip for Shopkeepers:</strong> Once opened on the kitchen phone, tap <strong>"Add to Home Screen"</strong> in Chrome/Safari to create a 1-tap App Icon!
         </div>
 
         <div className="modal-actions" style={{ marginTop: 20 }}>
