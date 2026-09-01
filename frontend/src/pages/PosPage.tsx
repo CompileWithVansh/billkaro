@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   DndContext,
   PointerSensor,
@@ -22,8 +23,12 @@ import ItemEditorModal from '../components/ItemEditorModal';
 import PaymentModal from '../components/PaymentModal';
 import SettingsModal from '../components/SettingsModal';
 import KeypadModal from '../components/KeypadModal';
+import HistoryModal from '../components/HistoryModal';
+import InventoryModal from '../components/InventoryModal';
+import ConnectKdsModal from '../components/ConnectKdsModal';
 import { nextItemColor } from '../colors';
 import { printBill } from '../components/PrintReceipt';
+import { saveCachedItems, getCachedItems, queueOfflineBill, syncPendingBills } from '../offlineStore';
 
 const TABS_KEY = 'billkaro_tabs';
 
@@ -32,7 +37,6 @@ function makeLineId() {
 }
 
 function nextBillNumber(bills: Bill[]): number {
-  // Extract numeric suffixes from "Bill N" labels.
   const used = new Set(
     bills
       .map((b) => {
@@ -41,7 +45,6 @@ function nextBillNumber(bills: Bill[]): number {
       })
       .filter((n): n is number => n !== null)
   );
-  // Return lowest positive integer not already in use.
   let n = 1;
   while (used.has(n)) n++;
   return n;
@@ -61,7 +64,6 @@ function billTotal(b: Bill, taxPercent: number) {
   return { subtotal, tax, total: +(subtotal + tax).toFixed(2) };
 }
 
-// Load persisted tabs (so an accidental refresh doesn't wipe open tables).
 function loadTabs(): { bills: Bill[] } | null {
   try {
     const raw = localStorage.getItem(TABS_KEY);
@@ -76,11 +78,12 @@ function loadTabs(): { bills: Bill[] } | null {
 
 export default function PosPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [items, setItems] = useState<Item[]>([]);
   const [locked, setLocked] = useState(true);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Multi-bill tabs (Chrome-style). Each bill has its own cart.
   const persisted = loadTabs();
   const [bills, setBills] = useState<Bill[]>(persisted?.bills ?? [newBill(1)]);
   const [activeId, setActiveId] = useState<string>(persisted?.bills?.[0]?.id ?? '');
@@ -88,6 +91,9 @@ export default function PosPage() {
   // Modals
   const [showSettings, setShowSettings] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showInventory, setShowInventory] = useState(false);
+  const [showConnectKds, setShowConnectKds] = useState(false);
   const [editorItem, setEditorItem] = useState<Item | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
@@ -99,43 +105,75 @@ export default function PosPage() {
 
   const taxPercent = user?.taxPercent ?? 0;
 
-  // Ensure activeId points at a real bill.
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
   useEffect(() => {
-    if ((!activeId || !bills.some((b) => b.id === activeId)) && bills.length) {
-      setActiveId(bills[0].id);
+    function onFSChange() {
+      setIsFullscreen(!!document.fullscreenElement);
     }
-  }, [activeId, bills]);
+    document.addEventListener('fullscreenchange', onFSChange);
+    return () => document.removeEventListener('fullscreenchange', onFSChange);
+  }, []);
 
-  // Persist tabs on every change.
-  useEffect(() => {
-    localStorage.setItem(TABS_KEY, JSON.stringify({ bills }));
-  }, [bills]);
-
-  // Reload-safe guard: warn before leaving/refreshing when any bill has
-  // unpaid items, so a stray reload can't wipe live calculations. Tabs are
-  // also persisted above, so even if they confirm, open bills are restored.
-  const hasUnpaidItems = useMemo(
-    () => bills.some((b) => b.lines.length > 0),
-    [bills]
-  );
-  useEffect(() => {
-    if (!hasUnpaidItems) return;
-    function onBeforeUnload(e: BeforeUnloadEvent) {
-      e.preventDefault();
-      e.returnValue = '';
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
     }
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [hasUnpaidItems]);
+    setMenuOpen(false);
+  }
 
-  // Load items on mount.
+  // Monitor Network Online/Offline status & sync pending bills on reconnect
   useEffect(() => {
-    api.get('/items').then((res) => setItems(res.data.items)).catch(() => {});
+    function handleOnline() {
+      setIsOnline(true);
+      syncPendingBills().then((count) => {
+        if (count > 0) alert(`🟢 Network restored! Synced ${count} offline bill(s) to server.`);
+        fetchItems();
+      });
+    }
+    function handleOffline() {
+      setIsOnline(false);
+    }
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  async function fetchItems() {
+    if (navigator.onLine) {
+      try {
+        const res = await api.get('/items');
+        setItems(res.data.items);
+        saveCachedItems(res.data.items);
+      } catch {
+        const cached = await getCachedItems();
+        if (cached.length) setItems(cached);
+      }
+    } else {
+      const cached = await getCachedItems();
+      if (cached.length) setItems(cached);
+    }
+  }
+
+  useEffect(() => {
+    fetchItems();
+    if (navigator.onLine) {
+      syncPendingBills().then((count) => {
+        if (count > 0) fetchItems();
+      });
+    }
   }, []);
 
   const activeBill = bills.find((b) => b.id === activeId) ?? bills[0];
 
-  // Quantity map (by itemId) so item buttons can show a badge.
   const qtyByItem = useMemo(() => {
     const map = new Map<number, number>();
     activeBill?.lines.forEach((l) => {
@@ -149,7 +187,6 @@ export default function PosPage() {
     [activeBill, taxPercent]
   );
 
-  // ---------- Cart operations (scoped to the active bill) ----------
   function updateActiveBill(updater: (b: Bill) => Bill) {
     setBills((prev) => prev.map((b) => (b.id === activeBill.id ? updater(b) : b)));
   }
@@ -210,7 +247,6 @@ export default function PosPage() {
     updateActiveBill((b) => ({ ...b, lines: [] }));
   }
 
-  // ---------- Tabs ----------
   function addTab() {
     setBills((prev) => {
       const b = newBill(nextBillNumber(prev));
@@ -246,7 +282,6 @@ export default function PosPage() {
     }
   }
 
-  // ---------- Item management ----------
   function openAddItem() {
     setEditorItem(null);
     setShowEditor(true);
@@ -256,7 +291,7 @@ export default function PosPage() {
     setShowEditor(true);
   }
 
-  async function saveItem(data: { name: string; price: number; color: string; category: string }) {
+  async function saveItem(data: { name: string; price: number; color: string; category: string; stockQuantity?: number | null }) {
     if (editorItem) {
       const res = await api.put(`/items/${editorItem.id}`, data);
       setItems((prev) => prev.map((i) => (i.id === editorItem.id ? res.data.item : i)));
@@ -274,7 +309,6 @@ export default function PosPage() {
     setShowEditor(false);
   }
 
-  // ---------- Drag to reorder (only when unlocked) ----------
   async function onDragEnd(e: DragEndEvent) {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
@@ -286,24 +320,45 @@ export default function PosPage() {
     try {
       await api.put('/items/layout/reorder', { order: reordered.map((i) => i.id) });
     } catch {
-      /* keep optimistic order */
     }
   }
 
-  // ---------- Payment ----------
-  async function markPaid() {
-    try {
-      await api.post('/bills', {
-        label: activeBill.label,
-        items: activeBill.lines,
-        subtotal,
-        tax,
-        total,
-        status: 'paid',
-      });
-    } catch {
-      /* history save is best-effort */
+  async function handleConfirmPayment(details: {
+    paymentMethod: 'upi' | 'cash' | 'udhaar';
+    customerName?: string;
+    customerPhone?: string;
+    status: 'paid' | 'unpaid';
+  }) {
+    const payload = {
+      label: activeBill.label,
+      items: activeBill.lines,
+      subtotal,
+      tax,
+      total,
+      paymentMethod: details.paymentMethod,
+      customerName: details.customerName,
+      customerPhone: details.customerPhone,
+      status: details.status,
+    };
+
+    if (navigator.onLine) {
+      try {
+        await api.post('/bills', payload);
+        fetchItems();
+      } catch (err) {
+        console.warn('Network error saving bill, queuing offline:', err);
+        await queueOfflineBill(payload);
+        alert('⚡ Saved offline! Bill will auto-sync when network is stable.');
+      }
+    } else {
+      await queueOfflineBill(payload);
+      alert('⚡ Offline Mode: Bill saved locally! Will sync automatically when back online.');
     }
+
+    if (details.paymentMethod !== 'udhaar' && user) {
+      printBill({ bill: activeBill, user, subtotal, tax, total });
+    }
+
     clearActiveBill();
     setShowPayment(false);
   }
@@ -313,7 +368,28 @@ export default function PosPage() {
       {/* Top bar */}
       <div className="topbar">
         <div className="logo">Bill<span>Karo</span></div>
+        <span
+          style={{
+            fontSize: '0.75rem',
+            padding: '2px 8px',
+            borderRadius: 12,
+            fontWeight: 600,
+            background: isOnline ? '#065f46' : '#991b1b',
+            color: isOnline ? '#6ee7b7' : '#fca5a5',
+            marginLeft: 4,
+          }}
+        >
+          {isOnline ? '🟢 Online' : '🔴 Offline Mode'}
+        </span>
+
         <div className="spacer" />
+
+        <button className="icon-btn" onClick={openAddItem} title="Add new product item">
+          ➕ Item
+        </button>
+        <button className="icon-btn" onClick={() => setShowInventory(true)} title="Stock & Inventory Manager">
+          📦 Stock
+        </button>
         <button
           className="icon-btn"
           onClick={() => setLocked((v) => !v)}
@@ -321,8 +397,63 @@ export default function PosPage() {
         >
           {locked ? '🔒 Locked' : '🔓 Arrange'}
         </button>
-        <button className="icon-btn" onClick={openAddItem}>➕ Item</button>
-        <button className="icon-btn" onClick={() => setShowSettings(true)}>⚙️</button>
+
+        {/* Hamburger Dropdown Menu */}
+        <div className="menu-dropdown-wrap">
+          <button
+            className="icon-btn"
+            onClick={() => setMenuOpen((v) => !v)}
+            title="More Options"
+          >
+            ☰ Menu
+          </button>
+          {menuOpen && (
+            <>
+              <div
+                style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                onClick={() => setMenuOpen(false)}
+              />
+              <div className="menu-dropdown" style={{ zIndex: 9999 }} onClick={() => setMenuOpen(false)}>
+                <button
+                  className="menu-dropdown-item"
+                  onClick={() => setShowInventory(true)}
+                >
+                  📦 Inventory & Stock
+                </button>
+                <button
+                  className="menu-dropdown-item"
+                  onClick={() => setShowHistory(true)}
+                >
+                  📜 History & Udhaar
+                </button>
+                <button
+                  className="menu-dropdown-item"
+                  onClick={() => setShowConnectKds(true)}
+                >
+                  📲 Connect Kitchen (QR)
+                </button>
+                <button
+                  className="menu-dropdown-item"
+                  onClick={() => navigate('/kds')}
+                >
+                  🍳 Kitchen KDS
+                </button>
+                <button
+                  className="menu-dropdown-item"
+                  onClick={toggleFullscreen}
+                >
+                  {isFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen Mode'}
+                </button>
+                <button
+                  className="menu-dropdown-item"
+                  onClick={() => setShowSettings(true)}
+                >
+                  ⚙️ Store Settings
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Bill tabs */}
@@ -388,13 +519,22 @@ export default function PosPage() {
               </div>
             </SortableContext>
           </DndContext>
+
+          <footer style={{ marginTop: 32, paddingTop: 16, borderTop: '1px solid var(--border)', textAlign: 'center', fontSize: '0.8rem', color: 'var(--muted)' }}>
+            © 2026 BillKaro POS • Made with ❤️ by Vansh Gupta
+          </footer>
         </div>
 
         {/* Cart */}
         <div className="cart-panel">
           <div className="cart-header">
-            <span>{activeBill?.label}</span>
-            <button className="mini-btn" onClick={() => renameTab(activeBill.id)}>Rename</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>🛒</span>
+              <span>{activeBill?.label}</span>
+            </div>
+            <button className="mini-btn" onClick={() => renameTab(activeBill.id)}>
+              ✏️ Rename
+            </button>
           </div>
 
           <div className="cart-lines">
@@ -414,7 +554,11 @@ export default function PosPage() {
                   <button onClick={() => changeQty(l.lineId, +1)}>+</button>
                 </div>
                 <div className="line-total">₹{(l.price * l.qty).toFixed(2)}</div>
-                <button className="line-del" onClick={() => removeLine(l.lineId)} title="Remove">🗑</button>
+                <button className="line-del" onClick={() => removeLine(l.lineId)} title="Remove line item">
+                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="#ef4444" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                  </svg>
+                </button>
               </div>
             ))}
           </div>
@@ -441,13 +585,6 @@ export default function PosPage() {
 
             <div className="cart-actions">
               <button className="btn ghost" onClick={clearActiveBill}>Clear</button>
-              <button
-                className="btn"
-                disabled={total <= 0}
-                onClick={() => user && printBill({ bill: activeBill, user, subtotal, tax, total })}
-              >
-                🖨️ Print
-              </button>
               <button
                 className="btn green"
                 disabled={total <= 0}
@@ -492,6 +629,10 @@ export default function PosPage() {
         />
       )}
 
+      {showHistory && user && <HistoryModal user={user} onClose={() => setShowHistory(false)} />}
+      {showInventory && <InventoryModal items={items} onClose={() => setShowInventory(false)} onRefreshItems={fetchItems} />}
+      {showConnectKds && <ConnectKdsModal onClose={() => setShowConnectKds(false)} />}
+
       {showPayment && (
         <PaymentModal
           amount={total}
@@ -499,7 +640,7 @@ export default function PosPage() {
           payeeName={user?.payeeName ?? null}
           storeName={user?.storeName ?? 'BillKaro'}
           onClose={() => setShowPayment(false)}
-          onMarkPaid={markPaid}
+          onConfirmPayment={handleConfirmPayment}
         />
       )}
 

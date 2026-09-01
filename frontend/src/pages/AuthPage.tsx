@@ -161,6 +161,10 @@ export default function AuthPage() {
             </>
           )}
         </div>
+
+        <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)', textAlign: 'center', fontSize: '0.8rem', color: 'var(--muted)' }}>
+          © 2026 BillKaro • Made with ❤️ by Vansh Gupta
+        </div>
       </div>
     </div>
   );
