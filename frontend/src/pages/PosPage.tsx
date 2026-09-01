@@ -165,7 +165,7 @@ export default function PosPage() {
       } else {
         lines = [
           ...b.lines,
-          { lineId: makeLineId(), itemId: item.id, name: item.name, price: item.price, qty: 1 },
+          { lineId: makeLineId(), itemId: item.id, name: item.name, price: item.price, qty: 1, category: item.category },
         ];
       }
       return { ...b, lines };

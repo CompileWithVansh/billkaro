@@ -23,6 +23,7 @@ export interface CartLine {
   name: string;
   price: number;
   qty: number;
+  category?: string;       // item category shown as description on the receipt
 }
 
 export interface Bill {

@@ -1,5 +1,4 @@
-import type { Bill } from '../types';
-import type { User } from '../types';
+import type { Bill, User } from '../types';
 
 interface Props {
   bill: Bill;
@@ -9,15 +8,6 @@ interface Props {
   total: number;
 }
 
-/**
- * Opens a new browser window with a print-optimised receipt and triggers the
- * print dialog immediately. Works with:
- *  - Any network/USB printer (thermal receipt printers, laser, inkjet)
- *  - iPad AirPrint
- *  - "Save as PDF" when no printer is connected
- *
- * No external library needed — the browser handles all rendering.
- */
 export function printBill({ bill, user, subtotal, tax, total }: Props) {
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-IN', {
@@ -27,44 +17,46 @@ export function printBill({ bill, user, subtotal, tax, total }: Props) {
     hour: '2-digit', minute: '2-digit', hour12: true,
   });
 
-  // Build the receipt rows
-  const rows = bill.lines
-    .map((l) => {
-      const lineTotal = (l.price * l.qty).toFixed(2);
-      const name = l.name.length > 20 ? l.name.slice(0, 19) + '…' : l.name;
-      return `
-        <tr>
-          <td class="item-name">${name}</td>
-          <td class="item-qty">${l.qty}</td>
-          <td class="item-price">₹${l.price.toFixed(2)}</td>
-          <td class="item-total">₹${lineTotal}</td>
-        </tr>`;
-    })
-    .join('');
-
-  const taxRow =
-    tax > 0
-      ? `<tr class="summary-row">
-           <td colspan="3">Tax (${user.taxPercent}%)</td>
-           <td>₹${tax.toFixed(2)}</td>
-         </tr>`
+  // Build item rows — each row has a light separator line beneath it,
+  // and shows the category as a description line under the item name.
+  const rows = bill.lines.map((l) => {
+    const lineTotal = (l.price * l.qty).toFixed(2);
+    const desc = l.category && l.category.trim()
+      ? `<div class="item-desc">${escHtml(l.category.trim())}</div>`
       : '';
+    return `
+      <tr class="item-row">
+        <td class="item-name">
+          ${escHtml(l.name)}
+          ${desc}
+        </td>
+        <td class="item-qty">${l.qty}</td>
+        <td class="item-price">₹${l.price.toFixed(2)}</td>
+        <td class="item-total">₹${lineTotal}</td>
+      </tr>
+      <tr class="item-sep"><td colspan="4"><hr class="row-divider" /></td></tr>`;
+  }).join('');
+
+  const taxRow = tax > 0
+    ? `<tr class="summary-row">
+         <td colspan="3">Tax (${user.taxPercent}%)</td>
+         <td>₹${tax.toFixed(2)}</td>
+       </tr>`
+    : '';
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Receipt — ${bill.label}</title>
+  <title>Receipt — ${escHtml(bill.label)}</title>
   <style>
-    /* ---- Reset ---- */
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* ---- Page: narrow column centred for thermal printers ---- */
     @page {
-      size: 80mm auto;   /* auto height = content height */
+      size: 80mm auto;
       margin: 4mm 0;
     }
+
     body {
       font-family: 'Courier New', Courier, monospace;
       font-size: 12px;
@@ -75,35 +67,25 @@ export function printBill({ bill, user, subtotal, tax, total }: Props) {
       padding: 6px 4px;
     }
 
-    /* ---- Store header ---- */
+    /* ---------- Header ---------- */
     .store-name {
       font-size: 18px;
       font-weight: bold;
       text-align: center;
       text-transform: uppercase;
       letter-spacing: 1px;
-      margin-bottom: 2px;
-    }
-    .store-sub {
-      text-align: center;
-      font-size: 10px;
-      color: #444;
       margin-bottom: 6px;
     }
 
-    /* ---- Dividers ---- */
-    .divider {
-      border: none;
-      border-top: 1px dashed #000;
-      margin: 6px 0;
-    }
-    .divider-solid {
-      border: none;
-      border-top: 1px solid #000;
-      margin: 6px 0;
-    }
+    /* ---------- Dividers ---------- */
+    .divider      { border: none; border-top: 1px dashed #000; margin: 6px 0; }
+    .divider-solid{ border: none; border-top: 1px solid  #000; margin: 6px 0; }
 
-    /* ---- Meta (date/bill) ---- */
+    /* thin line between each item row */
+    .row-divider  { border: none; border-top: 1px dotted #aaa; margin: 0; }
+    .item-sep td  { padding: 0; }
+
+    /* ---------- Meta ---------- */
     .meta {
       display: flex;
       justify-content: space-between;
@@ -111,86 +93,55 @@ export function printBill({ bill, user, subtotal, tax, total }: Props) {
       margin-bottom: 2px;
     }
 
-    /* ---- Items table ---- */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
+    /* ---------- Items table ---------- */
+    table { width: 100%; border-collapse: collapse; }
+
     thead th {
       font-size: 10px;
       text-transform: uppercase;
       border-bottom: 1px solid #000;
       padding: 3px 0;
     }
-    .col-name  { text-align: left;  width: 44%; }
+    .col-name  { text-align: left;   width: 44%; }
     .col-qty   { text-align: center; width: 12%; }
-    .col-price { text-align: right; width: 22%; }
-    .col-total { text-align: right; width: 22%; }
+    .col-price { text-align: right;  width: 22%; }
+    .col-total { text-align: right;  width: 22%; }
 
-    tbody td {
-      padding: 4px 0;
-      vertical-align: top;
-    }
-    .item-name  { text-align: left; }
-    .item-qty   { text-align: center; }
-    .item-price { text-align: right; }
-    .item-total { text-align: right; font-weight: bold; }
+    .item-row td { padding: 5px 0 3px; vertical-align: top; }
+    .item-name   { text-align: left; }
+    .item-desc   { font-size: 10px; color: #555; margin-top: 2px; }
+    .item-qty    { text-align: center; }
+    .item-price  { text-align: right; }
+    .item-total  { text-align: right; font-weight: bold; }
 
-    /* ---- Summary ---- */
-    .summary-row td {
-      padding: 2px 0;
-    }
-    .summary-row td:first-child {
-      text-align: right;
-    }
-    .summary-row td:last-child {
-      text-align: right;
-      font-weight: bold;
-    }
+    /* ---------- Summary ---------- */
+    .summary-row td { padding: 2px 0; }
+    .summary-row td:first-child { text-align: right; }
+    .summary-row td:last-child  { text-align: right; font-weight: bold; }
 
-    .total-row {
-      font-size: 15px;
-      font-weight: bold;
-    }
-    .total-row td {
-      padding: 4px 0;
-    }
+    .total-row { font-size: 15px; font-weight: bold; }
+    .total-row td { padding: 4px 0; }
     .total-row td:first-child { text-align: right; }
     .total-row td:last-child  { text-align: right; }
 
-    /* ---- Footer ---- */
-    .footer {
-      text-align: center;
-      font-size: 10px;
-      color: #555;
-      margin-top: 8px;
-    }
-    .footer .powered {
-      font-size: 9px;
-      color: #888;
-      margin-top: 4px;
-    }
+    /* ---------- Footer ---------- */
+    .footer       { text-align: center; font-size: 10px; color: #555; margin-top: 8px; }
+    .footer .powered { font-size: 9px; color: #888; margin-top: 3px; }
 
-    /* ---- Hide on screen, show on print ---- */
+    /* ---------- Screen preview ---------- */
     @media screen {
-      body {
-        width: 360px;
-        border: 1px dashed #ccc;
-        padding: 16px;
-        font-size: 13px;
-      }
+      body { width: 360px; border: 1px dashed #ccc; padding: 16px; font-size: 13px; }
       .store-name { font-size: 20px; }
     }
   </style>
 </head>
 <body>
   <div class="store-name">${escHtml(user.storeName)}</div>
-  ${user.upiId ? `<div class="store-sub">UPI: ${escHtml(user.upiId)}</div>` : ''}
 
   <hr class="divider" />
 
   <div class="meta">
-    <span>${dateStr} ${timeStr}</span>
+    <span>${dateStr} &nbsp; ${timeStr}</span>
     <span><strong>${escHtml(bill.label)}</strong></span>
   </div>
 
@@ -235,23 +186,20 @@ export function printBill({ bill, user, subtotal, tax, total }: Props) {
 </body>
 </html>`;
 
-  const win = window.open('', '_blank', 'width=420,height=600');
+  const win = window.open('', '_blank', 'width=420,height=640');
   if (!win) {
-    alert('Could not open print window. Please allow popups for this site.');
+    alert('Pop-up blocked. Please allow pop-ups for this site and try again.');
     return;
   }
   win.document.write(html);
   win.document.close();
-  // Small delay so fonts/styles load before the print dialog fires.
   win.onload = () => {
     win.focus();
     win.print();
-    // Close the helper window after printing (or cancelling).
     win.onafterprint = () => win.close();
   };
 }
 
-// Minimal HTML escaping so store names with & or < don't break the receipt.
 function escHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
