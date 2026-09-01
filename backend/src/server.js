@@ -72,9 +72,9 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('kds:update-status', ({ userId, orderId, status }) => {
+  socket.on('kds:update-status', ({ userId, orderId, label, status }) => {
     if (userId && orderId) {
-      io.to(`store_${userId}`).emit('kds:order-updated', { orderId, status });
+      io.to(`store_${userId}`).emit('kds:order-updated', { orderId, label, status });
     }
   });
 });

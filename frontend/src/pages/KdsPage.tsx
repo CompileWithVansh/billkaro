@@ -127,6 +127,8 @@ export default function KdsPage() {
       .catch((err) => console.warn('Could not fetch active KDS orders:', err));
   }, [pairedStoreId]);
 
+  const [socketInst, setSocketInst] = useState<Socket | null>(null);
+
   // Connect WebSockets for live order stream
   useEffect(() => {
     if (!pairedStoreId) return;
@@ -138,6 +140,8 @@ export default function KdsPage() {
     const socket: Socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
     });
+
+    setSocketInst(socket);
 
     socket.on('connect', () => {
       socket.emit('join_store', pairedStoreId);
@@ -160,9 +164,18 @@ export default function KdsPage() {
   }, [pairedStoreId]);
 
   function updateStatus(ticketId: string | number, status: 'preparing' | 'ready') {
+    const target = tickets.find((t) => t.id === ticketId);
     setTickets((prev) =>
       prev.map((t) => (t.id === ticketId ? { ...t, status } : t))
     );
+    if (socketInst && pairedStoreId) {
+      socketInst.emit('kds:update-status', {
+        userId: pairedStoreId,
+        orderId: ticketId,
+        label: target?.label || 'Order',
+        status,
+      });
+    }
   }
 
   function clearTicket(ticketId: string | number) {

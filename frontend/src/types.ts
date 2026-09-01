@@ -34,6 +34,7 @@ export interface Bill {
   id: string;      // client-side tab id
   label: string;   // e.g. "Table 1"
   lines: CartLine[];
+  kdsStatus?: 'preparing' | 'ready';
 }
 
 export interface SavedBill {

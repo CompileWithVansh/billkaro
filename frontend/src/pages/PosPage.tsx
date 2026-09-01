@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { io, Socket } from 'socket.io-client';
 import {
   DndContext,
   PointerSensor,
@@ -17,6 +18,25 @@ import {
 import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import type { Item, Bill, CartLine } from '../types';
+
+function playAudioChime() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.5);
+  } catch (err) {
+    console.log('Audio chime error:', err);
+  }
+}
 
 import SortableItemButton from '../components/SortableItemButton';
 import ItemEditorModal from '../components/ItemEditorModal';
@@ -184,6 +204,40 @@ export default function PosPage() {
       });
     }
   }, []);
+
+  // Listen for Kitchen KDS status updates (when cook marks order ready)
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const socketUrl = import.meta.env.VITE_API_URL
+      ? import.meta.env.VITE_API_URL.replace('/api', '')
+      : window.location.origin;
+
+    const socket: Socket = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+    });
+
+    socket.on('connect', () => {
+      socket.emit('join_store', user.id);
+    });
+
+    socket.on('kds:order-updated', ({ label, status }: { label: string; status: 'preparing' | 'ready' }) => {
+      if (status === 'ready') {
+        playAudioChime();
+        setBills((prev) =>
+          prev.map((b) =>
+            b.label === label || (label && b.label.toLowerCase().includes(label.toLowerCase()))
+              ? { ...b, kdsStatus: 'ready' }
+              : b
+          )
+        );
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user?.id]);
 
   const activeBill = bills.find((b) => b.id === activeId) ?? bills[0];
 
@@ -562,6 +616,16 @@ export default function PosPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span>🛒</span>
               <span>{activeBill?.label}</span>
+              {activeBill?.kdsStatus === 'ready' && (
+                <span style={{ fontSize: '0.75rem', background: '#166534', color: '#86efac', padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
+                  ✅ Food Ready!
+                </span>
+              )}
+              {activeBill?.kdsStatus === 'preparing' && (
+                <span style={{ fontSize: '0.75rem', background: '#854d0e', color: '#fef08a', padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
+                  🔥 Kitchen Preparing
+                </span>
+              )}
             </div>
             <button className="mini-btn" onClick={() => renameTab(activeBill.id)}>
               ✏️ Rename
@@ -614,22 +678,42 @@ export default function PosPage() {
               <span>₹{total.toFixed(2)}</span>
             </div>
 
-            <div className="cart-actions">
-              <button className="btn ghost" onClick={clearActiveBill}>Clear</button>
+            <div className="cart-actions" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* Row 1: Restored Clean Side-by-side Layout */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn ghost" style={{ flex: 1 }} onClick={clearActiveBill}>Clear</button>
+                <button
+                  className="btn green"
+                  style={{ flex: 2 }}
+                  disabled={total <= 0}
+                  onClick={() => setShowPayment(true)}
+                >
+                  💳 Pay ₹{total.toFixed(2)}
+                </button>
+              </div>
+
+              {/* Row 2: Secondary Send to Kitchen button below Clear & Pay */}
               <button
-                className="btn secondary"
-                disabled={activeBill.lines.length === 0}
+                className="btn ghost"
+                style={{
+                  background: activeBill?.kdsStatus === 'ready' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(56, 189, 248, 0.1)',
+                  color: activeBill?.kdsStatus === 'ready' ? '#4ade80' : '#38bdf8',
+                  border: activeBill?.kdsStatus === 'ready' ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(56, 189, 248, 0.3)',
+                  width: '100%',
+                  padding: '8px 12px',
+                  fontSize: '0.85rem',
+                }}
+                disabled={!activeBill || activeBill.lines.length === 0}
                 onClick={handleSendToKitchen}
                 title="Send live ticket to Kitchen Display Screen"
               >
-                {kdsSentToast ? '✔ Sent!' : '🍳 Kitchen'}
-              </button>
-              <button
-                className="btn green"
-                disabled={total <= 0}
-                onClick={() => setShowPayment(true)}
-              >
-                💳 Pay ₹{total.toFixed(2)}
+                {kdsSentToast
+                  ? '✔ Ticket Sent to Kitchen!'
+                  : activeBill?.kdsStatus === 'ready'
+                  ? '✅ Food Ready to Serve!'
+                  : activeBill?.kdsStatus === 'preparing'
+                  ? '🔥 Cooking in Kitchen (Re-send Ticket)'
+                  : '🍳 Send Ticket to Kitchen (KDS)'}
               </button>
             </div>
           </div>
