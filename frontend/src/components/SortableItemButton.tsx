@@ -7,6 +7,7 @@ interface Props {
   qty: number;
   locked: boolean;
   onTap: (item: Item) => void;
+  onDecrement?: (item: Item) => void;
   onEdit: (item: Item) => void;
 }
 
@@ -16,7 +17,7 @@ interface Props {
  * - When UNLOCKED, the button becomes draggable to rearrange, and a small
  *   edit dot lets you edit/delete the item.
  */
-export default function SortableItemButton({ item, qty, locked, onTap, onEdit }: Props) {
+export default function SortableItemButton({ item, qty, locked, onTap, onDecrement, onEdit }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
     disabled: locked,
@@ -47,7 +48,23 @@ export default function SortableItemButton({ item, qty, locked, onTap, onEdit }:
         if (locked && !isOutOfStock) onTap(item);
       }}
     >
-      {qty > 0 && <span className={`badge ${!locked ? 'with-edit' : ''}`}>{qty}</span>}
+      {qty > 0 && (
+        <span
+          className={`badge ${!locked ? 'with-edit' : ''}`}
+          title={locked ? 'Tap to subtract 1' : undefined}
+          onClick={(e) => {
+            if (locked && onDecrement) {
+              e.stopPropagation();
+              onDecrement(item);
+            }
+          }}
+          onPointerDown={(e) => {
+            if (locked) e.stopPropagation();
+          }}
+        >
+          {qty}
+        </span>
+      )}
 
       {isOutOfStock && <span className="stock-badge out">Out of Stock</span>}
       {!isOutOfStock && isLowStock && (

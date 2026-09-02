@@ -281,6 +281,22 @@ export default function PosPage() {
     });
   }
 
+  function removeFromCart(item: Item) {
+    updateActiveBill((b) => {
+      const line = b.lines.find((l) => l.itemId === item.id);
+      if (!line) return b;
+      let lines: CartLine[];
+      if (line.qty > 1) {
+        lines = b.lines.map((l) =>
+          l.itemId === item.id ? { ...l, qty: l.qty - 1 } : l
+        );
+      } else {
+        lines = b.lines.filter((l) => l.itemId !== item.id);
+      }
+      return { ...b, lines };
+    });
+  }
+
   function addCustomAmount(amount: number) {
     updateActiveBill((b) => ({
       ...b,
@@ -621,6 +637,7 @@ export default function PosPage() {
                     qty={qtyByItem.get(item.id) ?? 0}
                     locked={locked}
                     onTap={addToCart}
+                    onDecrement={removeFromCart}
                     onEdit={openEditItem}
                   />
                 ))}

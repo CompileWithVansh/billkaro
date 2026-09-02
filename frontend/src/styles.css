@@ -402,6 +402,13 @@ select {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
   border: 2px solid rgba(15, 23, 42, 0.25);
   z-index: 5;
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.1s ease;
+}
+.item-btn .badge:active {
+  transform: scale(0.82);
+  background: #fca5a5;
+  color: #991b1b;
 }
 .item-btn .badge.with-edit {
   right: auto;
