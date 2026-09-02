@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -16,10 +16,12 @@ import {
   arrayMove,
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
+import { toBlob } from 'html-to-image';
 
 import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import type { Item, Bill, CartLine } from '../types';
+import { ReceiptCard } from '../components/ReceiptCard';
 
 function playAudioChime() {
   try {
@@ -134,6 +136,7 @@ export default function PosPage() {
   const [showEditor, setShowEditor] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [qtyEditLine, setQtyEditLine] = useState<CartLine | null>(null);
+  const receiptRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -449,19 +452,40 @@ export default function PosPage() {
     if (details.action === 'print' && details.paymentMethod !== 'udhaar' && user) {
       printBill({ bill: activeBill, user, subtotal, tax, total });
     } else if (details.action === 'whatsapp') {
-      const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill: ${activeBill.label}\n----------------------------------\n${activeBill.lines.map((l) => `• ${l.name} x${l.qty} = ₹${(l.price * l.qty).toFixed(2)}`).join('\n')}\n----------------------------------\n*Total Amount: ₹${total.toFixed(2)}*\nStatus: ${details.paymentMethod === 'udhaar' ? 'Udhaar / Unpaid' : `Paid via ${details.paymentMethod.toUpperCase()}`}\n\nThank you for visiting!`;
+      try {
+        if (receiptRef.current) {
+          const blob = await toBlob(receiptRef.current, { pixelRatio: 2 });
+          if (blob) {
+            const file = new File([blob], `${activeBill.label.replace(/\s+/g, '_')}_Receipt.png`, { type: 'image/png' });
+            
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                title: `BillKaro Receipt - ${activeBill.label}`,
+                text: `Receipt from ${user?.storeName || 'BillKaro'} (Total: ₹${total.toFixed(2)})`,
+                files: [file],
+              });
+            } else {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${activeBill.label.replace(/\s+/g, '_')}_Receipt.png`;
+              a.click();
+              URL.revokeObjectURL(url);
 
-      if (details.customerPhone && details.customerPhone.trim()) {
-        const cleanPhone = details.customerPhone.replace(/\D/g, '');
-        const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-        window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(textMessage)}`, '_blank');
-      } else if (navigator.share) {
-        navigator.share({
-          title: `BillKaro Receipt - ${activeBill.label}`,
-          text: textMessage,
-        }).catch(() => {});
-      } else {
-        window.open(`https://wa.me/?text=${encodeURIComponent(textMessage)}`, '_blank');
+              const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill: ${activeBill.label}\nTotal Amount: ₹${total.toFixed(2)}\nPayment Method: ${details.paymentMethod.toUpperCase()}\n\nThank you for visiting us!`;
+
+              if (details.customerPhone && details.customerPhone.trim()) {
+                const cleanPhone = details.customerPhone.replace(/\D/g, '');
+                const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+                window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(textMessage)}`, '_blank');
+              } else {
+                window.open(`https://wa.me/?text=${encodeURIComponent(textMessage)}`, '_blank');
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to generate image receipt:', err);
       }
     }
 
@@ -838,6 +862,21 @@ export default function PosPage() {
       )}
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+
+      {/* Offscreen Receipt Component for PNG/JPG Image Generation */}
+      {user && (
+        <div style={{ position: 'fixed', left: '-9999px', top: '-9999px', zIndex: -1 }}>
+          <ReceiptCard
+            ref={receiptRef}
+            bill={activeBill}
+            user={user}
+            subtotal={subtotal}
+            tax={tax}
+            total={total}
+            paymentMethod={activeBill?.lines.length > 0 ? 'paid' : 'cash'}
+          />
+        </div>
+      )}
     </div>
   );
 }

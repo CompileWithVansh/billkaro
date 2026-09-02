@@ -130,7 +130,7 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
           letterSpacing: '0.5px',
         }}
       >
-        Status: {paymentMethod === 'udhaar' ? 'Udhaar / Credit (Unpaid)' : `Paid via ${paymentMethod.toUpperCase()}`}
+        Payment Method: {paymentMethod === 'udhaar' ? 'Udhaar / Credit (Unpaid)' : paymentMethod.toUpperCase()}
       </div>
 
       <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '11px', color: '#94a3b8' }}>
