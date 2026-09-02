@@ -47,7 +47,7 @@ export default function SortableItemButton({ item, qty, locked, onTap, onEdit }:
         if (locked && !isOutOfStock) onTap(item);
       }}
     >
-      {qty > 0 && <span className="badge">{qty}</span>}
+      {qty > 0 && <span className={`badge ${!locked ? 'with-edit' : ''}`}>{qty}</span>}
 
       {isOutOfStock && <span className="stock-badge out">Out of Stock</span>}
       {!isOutOfStock && isLowStock && (
