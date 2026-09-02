@@ -12,7 +12,7 @@ interface Props {
     customerName?: string;
     customerPhone?: string;
     status: 'paid' | 'unpaid';
-    shouldPrint?: boolean;
+    action: 'save' | 'whatsapp' | 'print';
   }) => void;
 }
 
@@ -54,7 +54,7 @@ export default function PaymentModal({
       .catch(() => setError('Could not generate QR code.'));
   }, [amount, upiId, payeeName, storeName, method]);
 
-  function handleComplete(shouldPrint: boolean = false) {
+  function handleComplete(action: 'save' | 'whatsapp' | 'print' = 'save') {
     if (method === 'udhaar') {
       if (!customerName.trim()) {
         setError('Please enter Customer Name for Udhaar credit.');
@@ -65,13 +65,15 @@ export default function PaymentModal({
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         status: 'unpaid',
-        shouldPrint: false,
+        action,
       });
     } else {
       onConfirmPayment({
         paymentMethod: method,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
         status: 'paid',
-        shouldPrint,
+        action,
       });
     }
   }
@@ -127,7 +129,7 @@ export default function PaymentModal({
         )}
 
         {method === 'cash' && (
-          <div style={{ textAlign: 'center', padding: '24px 0', fontSize: '1.1rem' }}>
+          <div style={{ textAlign: 'center', padding: '20px 0', fontSize: '1.1rem' }}>
             Collect <strong>₹{amount.toFixed(2)}</strong> cash from customer.
           </div>
         )}
@@ -144,7 +146,7 @@ export default function PaymentModal({
               />
             </div>
             <div className="field">
-              <label>Customer Phone (optional)</label>
+              <label>Customer Phone (optional for WhatsApp)</label>
               <input
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
@@ -155,22 +157,45 @@ export default function PaymentModal({
           </div>
         )}
 
-        <div className="modal-actions" style={{ marginTop: 20, display: 'flex', gap: 8 }}>
-          <button className="btn ghost" onClick={onClose} style={{ flex: 1 }}>Cancel</button>
-          {method === 'udhaar' ? (
-            <button className="btn green" style={{ flex: 2 }} onClick={() => handleComplete(false)}>
-              📋 Save as Udhaar
+        <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Main Primary Green Save Button */}
+          <button
+            type="button"
+            className="btn green block"
+            style={{ fontSize: '1.1rem', minHeight: '52px' }}
+            onClick={() => handleComplete('save')}
+          >
+            {method === 'udhaar' ? '📋 Save as Udhaar' : '✅ Paid'}
+          </button>
+
+          {/* Secondary Action Buttons */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="btn ghost"
+              style={{ flex: 1, fontSize: '0.9rem' }}
+              onClick={() => handleComplete('whatsapp')}
+            >
+              📲 WhatsApp Receipt
             </button>
-          ) : (
-            <>
-              <button className="btn green" style={{ flex: 1.5 }} onClick={() => handleComplete(false)}>
-                ✔ Complete Only
-              </button>
-              <button className="btn primary" style={{ flex: 1.5 }} onClick={() => handleComplete(true)}>
-                🖨️ Save & Print
-              </button>
-            </>
-          )}
+            <button
+              type="button"
+              className="btn ghost"
+              style={{ flex: 1, fontSize: '0.9rem' }}
+              onClick={() => handleComplete('print')}
+            >
+              🖨️ Print
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="btn ghost block"
+            style={{ marginTop: 4, opacity: 0.6, fontSize: '0.85rem' }}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
         </div>
       </div>
     </div>

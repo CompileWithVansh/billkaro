@@ -418,7 +418,7 @@ export default function PosPage() {
     customerName?: string;
     customerPhone?: string;
     status: 'paid' | 'unpaid';
-    shouldPrint?: boolean;
+    action: 'save' | 'whatsapp' | 'print';
   }) {
     const payload = {
       label: activeBill.label,
@@ -446,8 +446,23 @@ export default function PosPage() {
       alert('⚡ Offline Mode: Bill saved locally! Will sync automatically when back online.');
     }
 
-    if (details.shouldPrint && details.paymentMethod !== 'udhaar' && user) {
+    if (details.action === 'print' && details.paymentMethod !== 'udhaar' && user) {
       printBill({ bill: activeBill, user, subtotal, tax, total });
+    } else if (details.action === 'whatsapp') {
+      const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill: ${activeBill.label}\n----------------------------------\n${activeBill.lines.map((l) => `• ${l.name} x${l.qty} = ₹${(l.price * l.qty).toFixed(2)}`).join('\n')}\n----------------------------------\n*Total Amount: ₹${total.toFixed(2)}*\nStatus: ${details.paymentMethod === 'udhaar' ? 'Udhaar / Unpaid' : `Paid via ${details.paymentMethod.toUpperCase()}`}\n\nThank you for visiting!`;
+
+      if (details.customerPhone && details.customerPhone.trim()) {
+        const cleanPhone = details.customerPhone.replace(/\D/g, '');
+        const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+        window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(textMessage)}`, '_blank');
+      } else if (navigator.share) {
+        navigator.share({
+          title: `BillKaro Receipt - ${activeBill.label}`,
+          text: textMessage,
+        }).catch(() => {});
+      } else {
+        window.open(`https://wa.me/?text=${encodeURIComponent(textMessage)}`, '_blank');
+      }
     }
 
     clearActiveBill();
