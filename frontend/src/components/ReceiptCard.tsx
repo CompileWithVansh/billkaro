@@ -115,22 +115,24 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
         </div>
       </div>
 
-      {/* Footer Payment Status */}
+      {/* Footer Payment Method / Status */}
       <div
         style={{
           marginTop: '20px',
           textAlign: 'center',
           padding: '10px',
           borderRadius: '10px',
-          background: paymentMethod === 'udhaar' ? '#fee2e2' : '#dcfce7',
-          color: paymentMethod === 'udhaar' ? '#991b1b' : '#166534',
+          background: paymentMethod === 'udhaar' ? '#fee2e2' : '#e0f2fe',
+          color: paymentMethod === 'udhaar' ? '#991b1b' : '#0369a1',
           fontWeight: '700',
           fontSize: '13px',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
         }}
       >
-        Payment Method: {paymentMethod === 'udhaar' ? 'Udhaar / Credit (Unpaid)' : paymentMethod.toUpperCase()}
+        {paymentMethod === 'udhaar'
+          ? 'STATUS: UDHAAR / UNPAID'
+          : `PAYMENT METHOD: ${paymentMethod.toUpperCase()}`}
       </div>
 
       <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '11px', color: '#94a3b8' }}>

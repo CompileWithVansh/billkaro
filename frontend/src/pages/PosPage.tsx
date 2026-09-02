@@ -137,6 +137,11 @@ export default function PosPage() {
   const [customOpen, setCustomOpen] = useState(false);
   const [qtyEditLine, setQtyEditLine] = useState<CartLine | null>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
+  const [currentReceiptDetails, setCurrentReceiptDetails] = useState<{
+    paymentMethod: string;
+    customerName?: string;
+    customerPhone?: string;
+  }>({ paymentMethod: 'upi' });
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -423,6 +428,12 @@ export default function PosPage() {
     status: 'paid' | 'unpaid';
     action: 'save' | 'whatsapp' | 'print';
   }) {
+    setCurrentReceiptDetails({
+      paymentMethod: details.paymentMethod,
+      customerName: details.customerName,
+      customerPhone: details.customerPhone,
+    });
+
     const payload = {
       label: activeBill.label,
       items: activeBill.lines,
@@ -873,7 +884,9 @@ export default function PosPage() {
             subtotal={subtotal}
             tax={tax}
             total={total}
-            paymentMethod={activeBill?.lines.length > 0 ? 'paid' : 'cash'}
+            paymentMethod={currentReceiptDetails.paymentMethod}
+            customerName={currentReceiptDetails.customerName}
+            customerPhone={currentReceiptDetails.customerPhone}
           />
         </div>
       )}
