@@ -4,6 +4,8 @@ import { io, Socket } from 'socket.io-client';
 import {
   DndContext,
   PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   closestCenter,
@@ -103,6 +105,7 @@ export default function PosPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [locked, setLocked] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [mobileView, setMobileView] = useState<'items' | 'cart'>('items');
 
   const persisted = useMemo(() => loadTabs(), []);
   const [bills, setBills] = useState<Bill[]>(persisted?.bills ?? [newBill(1)]);
@@ -133,7 +136,9 @@ export default function PosPage() {
   const [qtyEditLine, setQtyEditLine] = useState<CartLine | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
   );
 
   const taxPercent = user?.taxPercent ?? 0;
@@ -384,9 +389,11 @@ export default function PosPage() {
     if (oldIndex < 0 || newIndex < 0) return;
     const reordered = arrayMove(items, oldIndex, newIndex);
     setItems(reordered);
+    saveCachedItems(reordered);
     try {
       await api.put('/items/layout/reorder', { order: reordered.map((i) => i.id) });
-    } catch {
+    } catch (err) {
+      console.warn('Failed to save layout reorder to backend:', err);
     }
   }
 
@@ -470,17 +477,17 @@ export default function PosPage() {
         <div className="spacer" />
 
         <button className="icon-btn" onClick={openAddItem} title="Add new product item">
-          ➕ Item
+          <span>➕</span> <span className="icon-btn-label">Item</span>
         </button>
         <button className="icon-btn" onClick={() => setShowInventory(true)} title="Stock & Inventory Manager">
-          📦 Stock
+          <span>📦</span> <span className="icon-btn-label">Stock</span>
         </button>
         <button
           className="icon-btn"
           onClick={() => setLocked((v) => !v)}
           title={locked ? 'Unlock to rearrange' : 'Lock layout'}
         >
-          {locked ? '🔒 Locked' : '🔓 Arrange'}
+          <span>{locked ? '🔒' : '🔓'}</span> <span className="icon-btn-label">{locked ? 'Locked' : 'Arrange'}</span>
         </button>
 
         {/* Hamburger Dropdown Menu */}
@@ -571,14 +578,30 @@ export default function PosPage() {
         <button className="tab-add" onClick={addTab} title="New bill">+</button>
       </div>
 
+      {/* Mobile view selector (visible only on small mobile screens) */}
+      <div className="mobile-view-tabs">
+        <button
+          className={`mobile-tab ${mobileView === 'items' ? 'active' : ''}`}
+          onClick={() => setMobileView('items')}
+        >
+          🛍️ Items ({items.length})
+        </button>
+        <button
+          className={`mobile-tab ${mobileView === 'cart' ? 'active' : ''}`}
+          onClick={() => setMobileView('cart')}
+        >
+          🛒 Cart {activeBill?.lines.length ? `(${activeBill.lines.reduce((a, b) => a + b.qty, 0)})` : ''} • ₹{total.toFixed(0)}
+        </button>
+      </div>
+
       {/* Workspace */}
-      <div className="workspace">
+      <div className={`workspace ${mobileView === 'cart' ? 'show-cart-mobile' : 'show-items-mobile'}`}>
         {/* Items */}
         <div className="items-panel">
           <div className="items-toolbar">
             <h2>Items</h2>
             {!locked && (
-              <span style={{ color: 'var(--muted)' }}>Drag to rearrange • tap ✎ to edit</span>
+              <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Drag to rearrange • tap ✎ to edit</span>
             )}
           </div>
 
@@ -605,15 +628,27 @@ export default function PosPage() {
             </SortableContext>
           </DndContext>
 
-          <footer style={{ marginTop: 32, paddingTop: 16, borderTop: '1px solid var(--border)', textAlign: 'center', fontSize: '0.8rem', color: 'var(--muted)' }}>
-            © 2026 BillKaro POS • Made with ❤️ by Vansh Gupta
-          </footer>
+          {/* Sticky Mobile Floating Cart Bar */}
+          {activeBill && activeBill.lines.length > 0 && (
+            <div className="mobile-floating-cart" onClick={() => setMobileView('cart')}>
+              <div className="m-cart-info">
+                <span className="m-cart-count">🛒 {activeBill.lines.reduce((a, b) => a + b.qty, 0)} Items Selected</span>
+                <span className="m-cart-total">₹{total.toFixed(2)}</span>
+              </div>
+              <button className="m-cart-pay-btn">
+                View Cart / Pay →
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Cart */}
         <div className="cart-panel">
           <div className="cart-header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button className="mobile-back-btn" onClick={() => setMobileView('items')} title="Back to Items">
+                ← Items
+              </button>
               <span>🛒</span>
               <span>{activeBill?.label}</span>
               {activeBill?.kdsStatus === 'ready' && (
@@ -715,6 +750,9 @@ export default function PosPage() {
                   ? '🔥 Cooking in Kitchen (Re-send Ticket)'
                   : '🍳 Send Ticket to Kitchen (KDS)'}
               </button>
+            </div>
+            <div style={{ marginTop: 14, textAlign: 'center', fontSize: '0.75rem', color: 'var(--muted)' }}>
+              © 2026 BillKaro POS • Made with ❤️ by Vansh Gupta
             </div>
           </div>
         </div>

@@ -39,6 +39,19 @@ router.post(
   })
 );
 
+// PUT /api/items/layout/reorder
+router.put(
+  '/layout/reorder',
+  wrap(async (req, res) => {
+    const { order } = req.body || {};
+    if (!Array.isArray(order)) {
+      return res.status(400).json({ error: 'order must be an array of item ids' });
+    }
+    const items = await itemsRepo.reorder(req.userId, order);
+    res.json({ items: items.map(mapItem) });
+  })
+);
+
 // PUT /api/items/:id
 router.put(
   '/:id',
@@ -57,19 +70,6 @@ router.delete(
     const ok = await itemsRepo.remove(req.params.id, req.userId);
     if (!ok) return res.status(404).json({ error: 'Item not found' });
     res.json({ ok: true });
-  })
-);
-
-// PUT /api/items/layout/reorder
-router.put(
-  '/layout/reorder',
-  wrap(async (req, res) => {
-    const { order } = req.body || {};
-    if (!Array.isArray(order)) {
-      return res.status(400).json({ error: 'order must be an array of item ids' });
-    }
-    const items = await itemsRepo.reorder(req.userId, order);
-    res.json({ items: items.map(mapItem) });
   })
 );
 

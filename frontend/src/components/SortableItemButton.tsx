@@ -30,16 +30,19 @@ export default function SortableItemButton({ item, qty, locked, onTap, onEdit }:
     transition,
     background: isOutOfStock ? '#475569' : item.color || '#2563eb',
     opacity: isOutOfStock ? 0.65 : 1,
-    cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+    cursor: locked ? (isOutOfStock ? 'not-allowed' : 'pointer') : 'grab',
+    touchAction: locked ? 'auto' : 'none',
+    zIndex: isDragging ? 99 : 'auto',
   };
 
   return (
     <button
+      type="button"
       ref={setNodeRef}
       style={style}
       className={`item-btn ${isDragging ? 'dragging' : ''} ${isOutOfStock ? 'out-of-stock' : ''}`}
-      {...(locked && !isOutOfStock ? {} : attributes)}
-      {...(locked && !isOutOfStock ? {} : listeners)}
+      {...(!locked ? attributes : {})}
+      {...(!locked ? listeners : {})}
       onClick={() => {
         if (locked && !isOutOfStock) onTap(item);
       }}
