@@ -17,6 +17,7 @@ export interface Item {
   price: number;
   color: string;
   category: string;
+  description?: string;
   stockQuantity: number | null;
   sortOrder: number;
 }
@@ -28,6 +29,16 @@ export interface CartLine {
   price: number;
   qty: number;
   category?: string;       // item category shown as description on the receipt
+  description?: string;    // item description shown on receipt / WhatsApp
+}
+
+export function getItemDesc(line: { description?: string; category?: string }): string {
+  const desc = line.description?.trim();
+  const cat = line.category?.trim();
+  if (desc && cat && desc.toLowerCase() !== cat.toLowerCase()) {
+    return `${cat} • ${desc}`;
+  }
+  return desc || cat || '';
 }
 
 export interface Bill {

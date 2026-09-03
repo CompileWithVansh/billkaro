@@ -14,6 +14,7 @@ function mapItem(r) {
     price: r.price,
     color: r.color,
     category: r.category,
+    description: r.description || '',
     stockQuantity: r.stock_quantity !== undefined && r.stock_quantity !== null ? Number(r.stock_quantity) : null,
     sortOrder: r.sort_order,
   };
@@ -32,9 +33,9 @@ router.get(
 router.post(
   '/',
   wrap(async (req, res) => {
-    const { name, price, color, category, stockQuantity } = req.body || {};
+    const { name, price, color, category, description, stockQuantity } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name is required' });
-    const item = await itemsRepo.create(req.userId, { name, price, color, category, stockQuantity });
+    const item = await itemsRepo.create(req.userId, { name, price, color, category, description, stockQuantity });
     res.status(201).json({ item: mapItem(item) });
   })
 );
@@ -56,8 +57,8 @@ router.put(
 router.put(
   '/:id',
   wrap(async (req, res) => {
-    const { name, price, color, category, stockQuantity } = req.body || {};
-    const item = await itemsRepo.update(req.params.id, req.userId, { name, price, color, category, stockQuantity });
+    const { name, price, color, category, description, stockQuantity } = req.body || {};
+    const item = await itemsRepo.update(req.params.id, req.userId, { name, price, color, category, description, stockQuantity });
     if (!item) return res.status(404).json({ error: 'Item not found' });
     res.json({ item: mapItem(item) });
   })

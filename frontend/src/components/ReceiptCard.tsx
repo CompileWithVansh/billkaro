@@ -1,4 +1,5 @@
 import { forwardRef } from 'react';
+import { getItemDesc } from '../types';
 import type { Bill, User } from '../types';
 
 interface Props {
@@ -73,16 +74,26 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
           </tr>
         </thead>
         <tbody>
-          {bill.lines.map((line, idx) => (
-            <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-              <td style={{ padding: '10px 0', fontWeight: '600', color: '#1e293b' }}>{line.name}</td>
-              <td style={{ padding: '10px 0', textAlign: 'center' }}>{line.qty}</td>
-              <td style={{ padding: '10px 0', textAlign: 'right', color: '#64748b' }}>₹{line.price.toFixed(2)}</td>
-              <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: '700', color: '#0f172a' }}>
-                ₹{(line.price * line.qty).toFixed(2)}
-              </td>
-            </tr>
-          ))}
+          {bill.lines.map((line, idx) => {
+            const desc = getItemDesc(line);
+            return (
+              <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '10px 0', verticalAlign: 'top' }}>
+                  <div style={{ fontWeight: '600', color: '#1e293b' }}>{line.name}</div>
+                  {desc ? (
+                    <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '400', marginTop: '2px', lineHeight: '1.3' }}>
+                      {desc}
+                    </div>
+                  ) : null}
+                </td>
+                <td style={{ padding: '10px 0', textAlign: 'center', verticalAlign: 'top' }}>{line.qty}</td>
+                <td style={{ padding: '10px 0', textAlign: 'right', color: '#64748b', verticalAlign: 'top' }}>₹{line.price.toFixed(2)}</td>
+                <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: '700', color: '#0f172a', verticalAlign: 'top' }}>
+                  ₹{(line.price * line.qty).toFixed(2)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

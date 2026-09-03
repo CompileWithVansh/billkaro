@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import type { SavedBill, User } from '../types';
+import { getItemDesc, type SavedBill, type User } from '../types';
 import { printBill } from './PrintReceipt';
 
 interface Props {
@@ -72,6 +72,30 @@ export default function HistoryModal({ user, onClose }: Props) {
     } else if (navigator.share) {
       navigator.share({
         title: `Payment Reminder - ${b.customerName || 'Udhaar'}`,
+        text,
+      }).catch(() => {});
+    } else {
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    }
+  }
+
+  function handleSendWhatsAppReceipt(b: SavedBill) {
+    const itemsList = (b.items || [])
+      .map((l) => {
+        const desc = getItemDesc(l);
+        return `• *${l.name}*${desc ? ` (${desc})` : ''} x${l.qty} — ₹${(l.price * l.qty).toFixed(2)}`;
+      })
+      .join('\n');
+
+    const text = `*BillKaro Receipt — ${user.storeName || 'BillKaro'}*\nDate: ${new Date(b.createdAt).toLocaleDateString('en-IN')}\nBill: ${b.label || 'Receipt'}${b.customerName ? `\nCustomer: ${b.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${Number(b.subtotal).toFixed(2)}${b.tax > 0 ? `\nTax (${user.taxPercent || 0}%): ₹${Number(b.tax).toFixed(2)}` : ''}\n*Total Amount: ₹${Number(b.total).toFixed(2)}*\nPayment: ${b.status === 'unpaid' ? 'UDHAAR / UNPAID' : `PAID via ${(b.paymentMethod || 'UPI').toUpperCase()}`}\n----------------------------------\n\nThank you for visiting us!`;
+
+    if (b.customerPhone && b.customerPhone.trim()) {
+      const cleanPhone = b.customerPhone.replace(/\D/g, '');
+      const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+      window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`, '_blank');
+    } else if (navigator.share) {
+      navigator.share({
+        title: `BillKaro Receipt - ${b.label || 'Bill'}`,
         text,
       }).catch(() => {});
     } else {
@@ -241,6 +265,14 @@ export default function HistoryModal({ user, onClose }: Props) {
                             </button>
                           </>
                         )}
+                        <button
+                          className="btn ghost"
+                          style={{ padding: '2px 8px', fontSize: '0.75rem', color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.4)' }}
+                          onClick={() => handleSendWhatsAppReceipt(b)}
+                          title="Share receipt with item descriptions on WhatsApp"
+                        >
+                          📲 WhatsApp
+                        </button>
                         <button
                           className="btn ghost"
                           style={{ padding: '2px 8px', fontSize: '0.75rem' }}

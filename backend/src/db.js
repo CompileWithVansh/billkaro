@@ -75,6 +75,7 @@ export async function initDb() {
     ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS kds_pin TEXT;
 
     ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS stock_quantity INTEGER DEFAULT NULL;
+    ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'upi';
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT NULL;
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_phone TEXT DEFAULT NULL;
@@ -91,6 +92,7 @@ export async function initDb() {
       price          REAL NOT NULL DEFAULT 0,
       color          TEXT DEFAULT '#2563eb',
       category       TEXT DEFAULT '',
+      description    TEXT DEFAULT '',
       stock_quantity INTEGER DEFAULT NULL,
       sort_order     INTEGER NOT NULL DEFAULT 0,
       created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -187,7 +189,7 @@ export const itemsRepo = {
     );
     return rows[0] || null;
   },
-  async create(userId, { name, price, color, category, stockQuantity }) {
+  async create(userId, { name, price, color, category, description, stockQuantity }) {
     const { rows: maxRows } = await getPool().query(
       'SELECT COALESCE(MAX(sort_order), -1) AS m FROM billkaro_items WHERE user_id = $1',
       [Number(userId)]
@@ -195,9 +197,9 @@ export const itemsRepo = {
     const nextOrder = Number(maxRows[0].m) + 1;
     const stock = stockQuantity === '' || stockQuantity === undefined || stockQuantity === null ? null : Number(stockQuantity);
     const { rows } = await getPool().query(
-      `INSERT INTO billkaro_items (user_id, name, price, color, category, stock_quantity, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [Number(userId), name, Number(price) || 0, color || '#2563eb', category || '', stock, nextOrder]
+      `INSERT INTO billkaro_items (user_id, name, price, color, category, description, stock_quantity, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [Number(userId), name, Number(price) || 0, color || '#2563eb', category || '', description || '', stock, nextOrder]
     );
     return rows[0];
   },
@@ -210,13 +212,15 @@ export const itemsRepo = {
          price          = COALESCE($2, price),
          color          = COALESCE($3, color),
          category       = COALESCE($4, category),
-         stock_quantity = CASE WHEN $5 THEN $6 ELSE stock_quantity END
-       WHERE id = $7 AND user_id = $8 RETURNING *`,
+         description    = COALESCE($5, description),
+         stock_quantity = CASE WHEN $6 THEN $7 ELSE stock_quantity END
+       WHERE id = $8 AND user_id = $9 RETURNING *`,
       [
         fields.name ?? null,
         fields.price == null ? null : Number(fields.price),
         fields.color ?? null,
         fields.category ?? null,
+        fields.description ?? null,
         hasStockUpdate,
         stockVal,
         Number(id),

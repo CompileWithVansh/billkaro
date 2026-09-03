@@ -7,7 +7,7 @@ interface Props {
   /** For new items, the color pre-selected so each item differs by default. */
   suggestedColor?: string;
   onClose: () => void;
-  onSave: (data: { name: string; price: number; color: string; category: string; stockQuantity?: number | null }) => void;
+  onSave: (data: { name: string; price: number; color: string; category: string; description?: string; stockQuantity?: number | null }) => void;
   onDelete?: () => void;
 }
 
@@ -16,6 +16,7 @@ export default function ItemEditorModal({ initial, suggestedColor, onClose, onSa
   const [price, setPrice] = useState(initial ? String(initial.price) : '');
   const [color, setColor] = useState(initial?.color ?? suggestedColor ?? ITEM_COLORS[0]);
   const [category, setCategory] = useState(initial?.category ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
   const [stockQuantity, setStockQuantity] = useState(initial?.stockQuantity !== null && initial?.stockQuantity !== undefined ? String(initial.stockQuantity) : '');
 
   function save() {
@@ -25,6 +26,7 @@ export default function ItemEditorModal({ initial, suggestedColor, onClose, onSa
       price: Number(price) || 0,
       color,
       category: category.trim(),
+      description: description.trim(),
       stockQuantity: stockQuantity === '' ? null : Number(stockQuantity),
     });
   }
@@ -49,6 +51,10 @@ export default function ItemEditorModal({ initial, suggestedColor, onClose, onSa
         <div className="field">
           <label>Category (optional)</label>
           <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. South Indian" />
+        </div>
+        <div className="field">
+          <label>Description (optional)</label>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. 500ml, Extra cheese, Spicy" />
         </div>
         <div className="field">
           <label>Button color</label>

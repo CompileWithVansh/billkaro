@@ -20,7 +20,7 @@ import { toBlob } from 'html-to-image';
 
 import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
-import type { Item, Bill, CartLine } from '../types';
+import { getItemDesc, type Item, type Bill, type CartLine } from '../types';
 import { ReceiptCard } from '../components/ReceiptCard';
 
 function playAudioChime() {
@@ -282,7 +282,15 @@ export default function PosPage() {
       } else {
         lines = [
           ...b.lines,
-          { lineId: makeLineId(), itemId: item.id, name: item.name, price: item.price, qty: 1, category: item.category },
+          {
+            lineId: makeLineId(),
+            itemId: item.id,
+            name: item.name,
+            price: item.price,
+            qty: 1,
+            category: item.category,
+            description: item.description || item.category,
+          },
         ];
       }
       return { ...b, lines };
@@ -387,7 +395,7 @@ export default function PosPage() {
     setShowEditor(true);
   }
 
-  async function saveItem(data: { name: string; price: number; color: string; category: string; stockQuantity?: number | null }) {
+  async function saveItem(data: { name: string; price: number; color: string; category: string; description?: string; stockQuantity?: number | null }) {
     if (editorItem) {
       const res = await api.put(`/items/${editorItem.id}`, data);
       setItems((prev) => prev.map((i) => (i.id === editorItem.id ? res.data.item : i)));
@@ -463,6 +471,25 @@ export default function PosPage() {
     if (details.action === 'print' && details.paymentMethod !== 'udhaar' && user) {
       printBill({ bill: activeBill, user, subtotal, tax, total });
     } else if (details.action === 'whatsapp') {
+      const itemsList = activeBill.lines
+        .map((l) => {
+          const desc = getItemDesc(l);
+          return `• *${l.name}*${desc ? ` (${desc})` : ''} x${l.qty} — ₹${(l.price * l.qty).toFixed(2)}`;
+        })
+        .join('\n');
+
+      const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill: ${activeBill.label}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${tax > 0 ? `\nTax (${user?.taxPercent || 0}%): ₹${tax.toFixed(2)}` : ''}\n*Total Amount: ₹${total.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `PAID via ${details.paymentMethod.toUpperCase()}`}\n----------------------------------\n\nThank you for visiting us!`;
+
+      const sendWhatsAppText = () => {
+        if (details.customerPhone && details.customerPhone.trim()) {
+          const cleanPhone = details.customerPhone.replace(/\D/g, '');
+          const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+          window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(textMessage)}`, '_blank');
+        } else {
+          window.open(`https://wa.me/?text=${encodeURIComponent(textMessage)}`, '_blank');
+        }
+      };
+
       try {
         if (receiptRef.current) {
           const blob = await toBlob(receiptRef.current, { pixelRatio: 2 });
@@ -483,20 +510,17 @@ export default function PosPage() {
               a.click();
               URL.revokeObjectURL(url);
 
-              const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill: ${activeBill.label}\nTotal Amount: ₹${total.toFixed(2)}\nPayment Method: ${details.paymentMethod.toUpperCase()}\n\nThank you for visiting us!`;
-
-              if (details.customerPhone && details.customerPhone.trim()) {
-                const cleanPhone = details.customerPhone.replace(/\D/g, '');
-                const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-                window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(textMessage)}`, '_blank');
-              } else {
-                window.open(`https://wa.me/?text=${encodeURIComponent(textMessage)}`, '_blank');
-              }
+              sendWhatsAppText();
             }
+          } else {
+            sendWhatsAppText();
           }
+        } else {
+          sendWhatsAppText();
         }
       } catch (err) {
         console.warn('Failed to generate image receipt:', err);
+        sendWhatsAppText();
       }
     }
 

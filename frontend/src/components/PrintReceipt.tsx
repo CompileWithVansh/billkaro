@@ -1,4 +1,4 @@
-import type { Bill, User } from '../types';
+import { getItemDesc, type Bill, type User } from '../types';
 
 interface Props {
   bill: Bill;
@@ -18,11 +18,12 @@ export function printBill({ bill, user, subtotal, tax, total }: Props) {
   });
 
   // Build item rows — each row has a light separator line beneath it,
-  // and shows the category as a description line under the item name.
+  // and shows the item description/category line under the item name.
   const rows = bill.lines.map((l) => {
     const lineTotal = (l.price * l.qty).toFixed(2);
-    const desc = l.category && l.category.trim()
-      ? `<div class="item-desc">${escHtml(l.category.trim())}</div>`
+    const itemDesc = getItemDesc(l);
+    const desc = itemDesc
+      ? `<div class="item-desc">${escHtml(itemDesc)}</div>`
       : '';
     return `
       <tr class="item-row">
