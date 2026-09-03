@@ -1,14 +1,15 @@
-import { getItemDesc, type Bill, type User } from '../types';
+import { getItemDesc, type Bill, type Item, type User } from '../types';
 
 interface Props {
   bill: Bill;
   user: User;
+  items?: Item[];
   subtotal: number;
   tax: number;
   total: number;
 }
 
-export function printBill({ bill, user, subtotal, tax, total }: Props) {
+export function printBill({ bill, user, items, subtotal, tax, total }: Props) {
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
@@ -21,7 +22,8 @@ export function printBill({ bill, user, subtotal, tax, total }: Props) {
   // and shows the item description/category line under the item name.
   const rows = bill.lines.map((l) => {
     const lineTotal = (l.price * l.qty).toFixed(2);
-    const itemDesc = getItemDesc(l);
+    const catalogItem = items?.find((i) => i.id === l.itemId);
+    const itemDesc = getItemDesc(l) || (catalogItem ? getItemDesc(catalogItem) : '');
     const desc = itemDesc
       ? `<div class="item-desc">${escHtml(itemDesc)}</div>`
       : '';

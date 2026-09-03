@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { getItemDesc, type SavedBill, type User } from '../types';
+import { getItemDesc, type Item, type SavedBill, type User } from '../types';
 import { printBill } from './PrintReceipt';
 
 interface Props {
   user: User;
+  items?: Item[];
   onClose: () => void;
 }
 
-export default function HistoryModal({ user, onClose }: Props) {
+export default function HistoryModal({ user, items, onClose }: Props) {
   const [bills, setBills] = useState<SavedBill[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
@@ -82,7 +83,8 @@ export default function HistoryModal({ user, onClose }: Props) {
   function handleSendWhatsAppReceipt(b: SavedBill) {
     const itemsList = (b.items || [])
       .map((l) => {
-        const desc = getItemDesc(l);
+        const catalogItem = items?.find((i) => i.id === l.itemId);
+        const desc = getItemDesc(l) || (catalogItem ? getItemDesc(catalogItem) : '');
         return `• *${l.name}*${desc ? ` (${desc})` : ''} x${l.qty} — ₹${(l.price * l.qty).toFixed(2)}`;
       })
       .join('\n');
@@ -280,6 +282,7 @@ export default function HistoryModal({ user, onClose }: Props) {
                             printBill({
                               bill: { id: String(b.id), label: b.label || 'Receipt', lines: b.items || [] },
                               user,
+                              items,
                               subtotal: b.subtotal,
                               tax: b.tax,
                               total: b.total,

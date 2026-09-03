@@ -1,10 +1,11 @@
 import { forwardRef } from 'react';
 import { getItemDesc } from '../types';
-import type { Bill, User } from '../types';
+import type { Bill, Item, User } from '../types';
 
 interface Props {
   bill: Bill;
   user: User;
+  items?: Item[];
   subtotal: number;
   tax: number;
   total: number;
@@ -16,6 +17,7 @@ interface Props {
 export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
   bill,
   user,
+  items,
   subtotal,
   tax,
   total,
@@ -75,7 +77,8 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
         </thead>
         <tbody>
           {bill.lines.map((line, idx) => {
-            const desc = getItemDesc(line);
+            const catalogItem = items?.find((i) => i.id === line.itemId);
+            const desc = getItemDesc(line) || (catalogItem ? getItemDesc(catalogItem) : '');
             return (
               <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                 <td style={{ padding: '10px 0', verticalAlign: 'top' }}>

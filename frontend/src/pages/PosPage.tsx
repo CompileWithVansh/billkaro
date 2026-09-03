@@ -277,7 +277,14 @@ export default function PosPage() {
       let lines: CartLine[];
       if (existing) {
         lines = b.lines.map((l) =>
-          l.itemId === item.id ? { ...l, qty: l.qty + 1 } : l
+          l.itemId === item.id
+            ? {
+                ...l,
+                qty: l.qty + 1,
+                category: l.category || item.category,
+                description: l.description || item.description || item.category,
+              }
+            : l
         );
       } else {
         lines = [
@@ -469,11 +476,12 @@ export default function PosPage() {
     }
 
     if (details.action === 'print' && details.paymentMethod !== 'udhaar' && user) {
-      printBill({ bill: activeBill, user, subtotal, tax, total });
+      printBill({ bill: activeBill, user, items, subtotal, tax, total });
     } else if (details.action === 'whatsapp') {
       const itemsList = activeBill.lines
         .map((l) => {
-          const desc = getItemDesc(l);
+          const catalogItem = items.find((i) => i.id === l.itemId);
+          const desc = getItemDesc(l) || (catalogItem ? getItemDesc(catalogItem) : '');
           return `• *${l.name}*${desc ? ` (${desc})` : ''} x${l.qty} — ₹${(l.price * l.qty).toFixed(2)}`;
         })
         .join('\n');
@@ -881,7 +889,7 @@ export default function PosPage() {
         />
       )}
 
-      {showHistory && user && <HistoryModal user={user} onClose={() => setShowHistory(false)} />}
+      {showHistory && user && <HistoryModal user={user} items={items} onClose={() => setShowHistory(false)} />}
       {showInventory && <InventoryModal items={items} onClose={() => setShowInventory(false)} onRefreshItems={fetchItems} />}
       {showConnectKds && <ConnectKdsModal onClose={() => setShowConnectKds(false)} />}
 
@@ -905,6 +913,7 @@ export default function PosPage() {
             ref={receiptRef}
             bill={activeBill}
             user={user}
+            items={items}
             subtotal={subtotal}
             tax={tax}
             total={total}
