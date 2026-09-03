@@ -50,6 +50,7 @@ import KeypadModal from '../components/KeypadModal';
 import HistoryModal from '../components/HistoryModal';
 import InventoryModal from '../components/InventoryModal';
 import ConnectKdsModal from '../components/ConnectKdsModal';
+import { MenuScannerModal } from '../components/MenuScannerModal';
 import { nextItemColor } from '../colors';
 import { printBill } from '../components/PrintReceipt';
 import { saveCachedItems, getCachedItems, queueOfflineBill, syncPendingBills } from '../offlineStore';
@@ -136,6 +137,7 @@ export default function PosPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showConnectKds, setShowConnectKds] = useState(false);
+  const [showMenuScanner, setShowMenuScanner] = useState(false);
   const [editorItem, setEditorItem] = useState<Item | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
@@ -667,6 +669,14 @@ export default function PosPage() {
 
         <div className="spacer" />
 
+        <button
+          className="icon-btn"
+          onClick={() => setShowMenuScanner(true)}
+          title="Scan paper menu card with Gemini AI"
+          style={{ borderColor: 'rgba(56, 189, 248, 0.4)', background: 'rgba(56, 189, 248, 0.08)' }}
+        >
+          <span>📷</span> <span className="icon-btn-label">Scan Menu</span>
+        </button>
         <button className="icon-btn" onClick={openAddItem} title="Add new product item">
           <span>➕</span> <span className="icon-btn-label">Item</span>
         </button>
@@ -704,6 +714,12 @@ export default function PosPage() {
                 onClick={() => setMenuOpen(false)}
               />
               <div className="menu-dropdown" style={{ zIndex: 9999 }} onClick={() => setMenuOpen(false)}>
+                <button
+                  className="menu-dropdown-item"
+                  onClick={() => setShowMenuScanner(true)}
+                >
+                  📷 AI Menu Scanner
+                </button>
                 <button
                   className="menu-dropdown-item"
                   onClick={() => setShowInventory(true)}
@@ -867,10 +883,17 @@ export default function PosPage() {
               <SortableContext items={items.map((i) => i.id)} strategy={rectSortingStrategy}>
                 <div className="item-grid">
                   {items.length === 0 && (
-                    <div className="empty-hint">
-                      No items yet. Tap <b>➕ Item</b> above to add your first product —
-                      it will instantly appear here as a button.
-                    </div>
+                    <div className="empty-hint" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                    <div>No items yet. Tap <b>➕ Item</b> above or scan your physical menu card:</div>
+                    <button
+                      type="button"
+                      className="btn green"
+                      onClick={() => setShowMenuScanner(true)}
+                      style={{ padding: '8px 16px', fontSize: '0.88rem' }}
+                    >
+                      📷 Scan Menu with AI
+                    </button>
+                  </div>
                   )}
                   {items.map((item) => (
                     <SortableItemButton
@@ -1069,6 +1092,15 @@ export default function PosPage() {
       {showHistory && user && <HistoryModal user={user} items={items} onClose={() => setShowHistory(false)} />}
       {showInventory && <InventoryModal items={items} onClose={() => setShowInventory(false)} onRefreshItems={fetchItems} />}
       {showConnectKds && <ConnectKdsModal onClose={() => setShowConnectKds(false)} />}
+      {showMenuScanner && (
+        <MenuScannerModal
+          onClose={() => setShowMenuScanner(false)}
+          onImportSuccess={() => {
+            fetchItems();
+            alert('🎉 Menu items successfully imported to your catalog!');
+          }}
+        />
+      )}
 
       {showPayment && (
         <PaymentModal
