@@ -831,12 +831,314 @@ select {
     gap: 8px;
   }
   .modal {
-    padding: 18px;
+    padding: 14px 12px;
     border-radius: 16px;
+    width: 100% !important;
+    max-height: 94vh;
+  }
+  .modal-backdrop {
+    padding: 8px !important;
   }
   .wide-modal {
     max-width: 100% !important;
+    width: 100% !important;
   }
+}
+
+/* ---------- Responsive Modal Header & Close Button ---------- */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--fg);
+  line-height: 1.3;
+}
+.modal-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.modal-close-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+/* ---------- Period Selector Pills ---------- */
+.period-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 12px;
+}
+.period-pills {
+  display: flex;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 4px;
+}
+.pill-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 5px 12px;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pill-btn:hover {
+  color: var(--fg);
+}
+.pill-btn.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+.period-date-input {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  height: 32px;
+}
+
+/* ---------- Sales Summary Grid ---------- */
+.sales-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 10px 0 16px;
+}
+.sales-stat-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.sales-stat-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.sales-stat-val {
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.sales-stat-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+@media (max-width: 640px) {
+  .sales-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .sales-stat-card {
+    padding: 8px 10px;
+  }
+  .sales-stat-val {
+    font-size: 1.1rem;
+  }
+}
+
+/* ---------- History Filter Row ---------- */
+.history-filter-row {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+.history-filter-row input {
+  flex: 1;
+  min-width: 160px;
+}
+.history-filter-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ---------- Mobile Bills List & Desktop Table ---------- */
+.mobile-bills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.desktop-bills-table {
+  display: none;
+}
+@media (min-width: 768px) {
+  .mobile-bills-list {
+    display: none;
+  }
+  .desktop-bills-table {
+    display: block;
+  }
+}
+
+.history-bill-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bill-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.bill-card-inv {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #38bdf8;
+}
+.bill-card-date {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.bill-card-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.bill-card-customer {
+  font-size: 0.82rem;
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.bill-card-items-preview {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+.bill-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bill-card-total {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--fg);
+}
+.bill-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.sm-btn {
+  padding: 4px 9px !important;
+  font-size: 0.75rem !important;
+  min-height: 28px !important;
+}
+
+/* ---------- Mobile Inventory List & Desktop Table ---------- */
+.mobile-inventory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.desktop-inventory-table {
+  display: none;
+}
+@media (min-width: 768px) {
+  .mobile-inventory-list {
+    display: none;
+  }
+  .desktop-inventory-table {
+    display: block;
+  }
+}
+
+.inventory-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inventory-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.inventory-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.inventory-card-price {
+  font-weight: 800;
+  color: #38bdf8;
+  font-size: 1rem;
+}
+.inventory-card-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.inventory-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 
 /* ---------- Keypad ---------- */

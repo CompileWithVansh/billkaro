@@ -20,7 +20,7 @@ import { toBlob } from 'html-to-image';
 
 import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
-import { getItemDesc, type Item, type Bill, type CartLine } from '../types';
+import { getItemDesc, formatInvoiceNumber, type Item, type Bill, type CartLine } from '../types';
 import { ReceiptCard } from '../components/ReceiptCard';
 
 function playAudioChime() {
@@ -64,7 +64,7 @@ function nextBillNumber(bills: Bill[]): number {
   const used = new Set(
     bills
       .map((b) => {
-        const m = b.label.match(/^Bill (\d+)$/);
+        const m = b.label.match(/^(?:Bill |T)(\d+)$/i);
         return m ? parseInt(m[1], 10) : null;
       })
       .filter((n): n is number => n !== null)
@@ -77,7 +77,7 @@ function nextBillNumber(bills: Bill[]): number {
 function newBill(index: number): Bill {
   return {
     id: makeLineId(),
-    label: `Bill ${index}`,
+    label: `T${index}`,
     lines: [],
   };
 }
@@ -94,6 +94,10 @@ function loadTabs(): { bills: Bill[]; activeId?: string } | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed.bills) || parsed.bills.length === 0) return null;
+    parsed.bills = parsed.bills.map((b: Bill) => ({
+      ...b,
+      label: b.label ? b.label.replace(/^Bill\s*(\d+)$/i, 'T$1') : 'T1',
+    }));
     return parsed;
   } catch {
     return null;
@@ -141,6 +145,7 @@ export default function PosPage() {
     paymentMethod: string;
     customerName?: string;
     customerPhone?: string;
+    invoiceNumber?: string;
   }>({ paymentMethod: 'upi' });
 
   const sensors = useSensors(
@@ -461,22 +466,44 @@ export default function PosPage() {
       status: details.status,
     };
 
+    let savedBillId: number | string | undefined;
+
     if (navigator.onLine) {
       try {
-        await api.post('/bills', payload);
+        const res = await api.post('/bills', payload);
+        savedBillId = res.data?.id || res.data?.bill?.id;
         fetchItems();
       } catch (err) {
         console.warn('Network error saving bill, queuing offline:', err);
-        await queueOfflineBill(payload);
+        const queued = await queueOfflineBill(payload);
+        savedBillId = (queued as any)?.tempId;
         alert('⚡ Saved offline! Bill will auto-sync when network is stable.');
       }
     } else {
-      await queueOfflineBill(payload);
+      const queued = await queueOfflineBill(payload);
+      savedBillId = (queued as any)?.tempId;
       alert('⚡ Offline Mode: Bill saved locally! Will sync automatically when back online.');
     }
 
+    const invNumber = savedBillId ? formatInvoiceNumber(savedBillId) : '';
+    const billDisplay = invNumber ? `${invNumber} (${activeBill.label})` : activeBill.label;
+
+    setCurrentReceiptDetails({
+      paymentMethod: details.paymentMethod,
+      customerName: details.customerName,
+      customerPhone: details.customerPhone,
+      invoiceNumber: invNumber,
+    });
+
     if (details.action === 'print' && details.paymentMethod !== 'udhaar' && user) {
-      printBill({ bill: activeBill, user, items, subtotal, tax, total });
+      printBill({
+        bill: { ...activeBill, label: billDisplay },
+        user,
+        items,
+        subtotal,
+        tax,
+        total,
+      });
     } else if (details.action === 'whatsapp') {
       const itemsList = activeBill.lines
         .map((l) => {
@@ -486,7 +513,7 @@ export default function PosPage() {
         })
         .join('\n');
 
-      const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill: ${activeBill.label}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${tax > 0 ? `\nTax (${user?.taxPercent || 0}%): ₹${tax.toFixed(2)}` : ''}\n*Total Amount: ₹${total.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `PAID via ${details.paymentMethod.toUpperCase()}`}\n----------------------------------\n\nThank you for visiting us!`;
+      const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nInvoice / Bill: *${billDisplay}*${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${tax > 0 ? `\nTax (${user?.taxPercent || 0}%): ₹${tax.toFixed(2)}` : ''}\n*Total Amount: ₹${total.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `PAID via ${details.paymentMethod.toUpperCase()}`}\n----------------------------------\n\nThank you for visiting us!`;
 
       const sendWhatsAppText = () => {
         if (details.customerPhone && details.customerPhone.trim()) {
@@ -914,6 +941,7 @@ export default function PosPage() {
             bill={activeBill}
             user={user}
             items={items}
+            invoiceNumber={currentReceiptDetails.invoiceNumber}
             subtotal={subtotal}
             tax={tax}
             total={total}

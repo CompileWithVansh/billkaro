@@ -41,6 +41,21 @@ export function getItemDesc(line: { description?: string; category?: string }): 
   return desc || cat || '';
 }
 
+export function formatInvoiceNumber(id: number | string): string {
+  const num = Number(id);
+  if (isNaN(num)) return String(id);
+  return `INV-${String(num).padStart(4, '0')}`;
+}
+
+export function getBillDisplayLabel(bill: { id?: number | string; label?: string }): string {
+  const inv = bill.id ? formatInvoiceNumber(bill.id) : '';
+  const rawLabel = (bill.label || '').trim();
+  const isGenericBill = /^bill\s*\d+$/i.test(rawLabel);
+  if (!inv) return rawLabel || 'Bill';
+  if (!rawLabel || isGenericBill) return inv;
+  return `${inv} (${rawLabel})`;
+}
+
 export interface Bill {
   id: string;      // client-side tab id
   label: string;   // e.g. "Table 1"

@@ -1,4 +1,5 @@
-import { forwardRef } from 'react';
+import { forwardRef, useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { getItemDesc } from '../types';
 import type { Bill, Item, User } from '../types';
 
@@ -6,6 +7,7 @@ interface Props {
   bill: Bill;
   user: User;
   items?: Item[];
+  invoiceNumber?: string;
   subtotal: number;
   tax: number;
   total: number;
@@ -18,6 +20,7 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
   bill,
   user,
   items,
+  invoiceNumber,
   subtotal,
   tax,
   total,
@@ -25,10 +28,27 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
   customerName,
   customerPhone,
 }, ref) => {
+  const [qrUrl, setQrUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (user.upiId && total > 0) {
+      const link = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${total.toFixed(2)}&cu=INR`;
+      QRCode.toDataURL(link, { width: 150, margin: 1 })
+        .then(setQrUrl)
+        .catch(() => {});
+    } else {
+      setQrUrl('');
+    }
+  }, [user.upiId, user.payeeName, user.storeName, total]);
+
   const dateStr = new Date().toLocaleString('en-IN', {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+
+  const billDisplay = invoiceNumber
+    ? `${invoiceNumber} (${bill.label})`
+    : bill.label;
 
   return (
     <div
@@ -52,8 +72,8 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
         </h2>
         {user.address && <div style={{ fontSize: '13px', color: '#64748b' }}>{user.address}</div>}
         {user.phone && <div style={{ fontSize: '13px', color: '#64748b' }}>Ph: {user.phone}</div>}
-        <div style={{ marginTop: '10px', fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>
-          {dateStr} • {bill.label}
+        <div style={{ marginTop: '10px', fontSize: '13px', color: '#475569', fontWeight: '700' }}>
+          {dateStr} • {billDisplay}
         </div>
       </div>
 
@@ -129,10 +149,23 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
         </div>
       </div>
 
+      {/* UPI QR Code */}
+      {qrUrl && (
+        <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <img src={qrUrl} alt="UPI QR Code" style={{ width: '130px', height: '130px', borderRadius: '8px' }} />
+          <div style={{ fontSize: '11px', fontWeight: '700', color: '#1e293b', marginTop: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Scan to Pay via any UPI App
+          </div>
+          <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+            GPay • PhonePe • Paytm • BHIM ({user.upiId})
+          </div>
+        </div>
+      )}
+
       {/* Footer Payment Method / Status */}
       <div
         style={{
-          marginTop: '20px',
+          marginTop: '16px',
           textAlign: 'center',
           padding: '10px',
           borderRadius: '10px',
