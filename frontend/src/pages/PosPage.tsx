@@ -652,113 +652,123 @@ export default function PosPage() {
     <div className="pos">
       {/* Top bar */}
       <div className="topbar">
-        <div className="logo">Bill<span>Karo</span></div>
-        <span
-          style={{
-            fontSize: '0.75rem',
-            padding: '2px 8px',
-            borderRadius: 12,
-            fontWeight: 600,
-            background: isOnline ? '#065f46' : '#991b1b',
-            color: isOnline ? '#6ee7b7' : '#fca5a5',
-            marginLeft: 4,
-          }}
-        >
-          {isOnline ? '🟢 Online' : '🔴 Offline Mode'}
-        </span>
+        <div className="topbar-brand">
+          <div className="logo">Bill<span>Karo</span></div>
+          <span className={`online-badge ${isOnline ? 'online' : 'offline'}`}>
+            <span>{isOnline ? '🟢' : '🔴'}</span>
+            <span className="online-badge-text">{isOnline ? 'Online' : 'Offline'}</span>
+          </span>
+        </div>
 
         <div className="spacer" />
 
-        <button
-          className="icon-btn"
-          onClick={() => setShowMenuScanner(true)}
-          title="Scan paper menu card with Gemini AI"
-          style={{ borderColor: 'rgba(56, 189, 248, 0.4)', background: 'rgba(56, 189, 248, 0.08)' }}
-        >
-          <span>📷</span> <span className="icon-btn-label">Scan Menu</span>
-        </button>
-        <button className="icon-btn" onClick={openAddItem} title="Add new product item">
-          <span>➕</span> <span className="icon-btn-label">Item</span>
-        </button>
-        <button
-          className={`icon-btn ${showCategorySidebar ? 'active-toggle' : ''}`}
-          onClick={toggleCategorySidebar}
-          title="Toggle Blinkit-style Category Sidebar"
-        >
-          <span>🏷️</span> <span className="icon-btn-label">Categories</span>
-        </button>
-        <button className="icon-btn" onClick={() => setShowInventory(true)} title="Stock & Inventory Manager">
-          <span>📦</span> <span className="icon-btn-label">Stock</span>
-        </button>
-        <button
-          className="icon-btn"
-          onClick={() => setLocked((v) => !v)}
-          title={locked ? 'Unlock to rearrange' : 'Lock layout'}
-        >
-          <span>{locked ? '🔒' : '🔓'}</span> <span className="icon-btn-label">{locked ? 'Locked' : 'Arrange'}</span>
-        </button>
-
-        {/* Hamburger Dropdown Menu */}
-        <div className="menu-dropdown-wrap">
+        <div className="topbar-actions">
+          {/* Quick buttons visible on Desktop/iPad, hidden on mobile */}
           <button
-            className="icon-btn"
-            onClick={() => setMenuOpen((v) => !v)}
-            title="More Options"
+            className="icon-btn topbar-desktop-only"
+            onClick={() => setShowMenuScanner(true)}
+            title="Scan paper menu card with Gemini AI"
+            style={{ borderColor: 'rgba(56, 189, 248, 0.4)', background: 'rgba(56, 189, 248, 0.08)' }}
           >
-            ☰ Menu
+            <span>📷</span> <span className="icon-btn-label">Scan Menu</span>
           </button>
-          {menuOpen && (
-            <>
-              <div
-                style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
-                onClick={() => setMenuOpen(false)}
-              />
-              <div className="menu-dropdown" style={{ zIndex: 9999 }} onClick={() => setMenuOpen(false)}>
-                <button
-                  className="menu-dropdown-item"
-                  onClick={() => setShowMenuScanner(true)}
-                >
-                  📷 AI Menu Scanner
-                </button>
-                <button
-                  className="menu-dropdown-item"
-                  onClick={() => setShowInventory(true)}
-                >
-                  📦 Inventory & Stock
-                </button>
-                <button
-                  className="menu-dropdown-item"
-                  onClick={() => setShowHistory(true)}
-                >
-                  📜 History & Udhaar
-                </button>
-                <button
-                  className="menu-dropdown-item"
-                  onClick={() => setShowConnectKds(true)}
-                >
-                  📲 Connect Kitchen (QR)
-                </button>
-                <button
-                  className="menu-dropdown-item"
-                  onClick={() => navigate('/kds')}
-                >
-                  🍳 Kitchen KDS
-                </button>
-                <button
-                  className="menu-dropdown-item"
-                  onClick={toggleFullscreen}
-                >
-                  {isFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen Mode'}
-                </button>
-                <button
-                  className="menu-dropdown-item"
-                  onClick={() => setShowSettings(true)}
-                >
-                  ⚙️ Store Settings
-                </button>
-              </div>
-            </>
-          )}
+          <button
+            className={`icon-btn topbar-desktop-only ${showCategorySidebar ? 'active-toggle' : ''}`}
+            onClick={toggleCategorySidebar}
+            title="Toggle Blinkit-style Category Sidebar"
+          >
+            <span>🏷️</span> <span className="icon-btn-label">Categories</span>
+          </button>
+          <button className="icon-btn topbar-desktop-only" onClick={() => setShowInventory(true)} title="Stock & Inventory Manager">
+            <span>📦</span> <span className="icon-btn-label">Stock</span>
+          </button>
+          <button
+            className="icon-btn topbar-desktop-only"
+            onClick={() => setLocked((v) => !v)}
+            title={locked ? 'Unlock to rearrange' : 'Lock layout'}
+          >
+            <span>{locked ? '🔒' : '🔓'}</span> <span className="icon-btn-label">{locked ? 'Locked' : 'Arrange'}</span>
+          </button>
+
+          {/* Primary Action Button: ➕ Item (always visible) */}
+          <button className="icon-btn primary-icon-btn" onClick={openAddItem} title="Add new product item">
+            <span>➕</span> <span className="icon-btn-label">Item</span>
+          </button>
+
+          {/* Hamburger Dropdown Menu (always visible) */}
+          <div className="menu-dropdown-wrap">
+            <button
+              className="icon-btn"
+              onClick={() => setMenuOpen((v) => !v)}
+              title="More Options"
+            >
+              <span>☰</span> <span className="icon-btn-label">Menu</span>
+            </button>
+            {menuOpen && (
+              <>
+                <div
+                  style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                  onClick={() => setMenuOpen(false)}
+                />
+                <div className="menu-dropdown" style={{ zIndex: 9999 }} onClick={() => setMenuOpen(false)}>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={() => setShowMenuScanner(true)}
+                  >
+                    📷 AI Menu Scanner
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={toggleCategorySidebar}
+                  >
+                    🏷️ Categories: {showCategorySidebar ? 'ON ✅' : 'OFF'}
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={() => setShowInventory(true)}
+                  >
+                    📦 Inventory & Stock
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={() => setLocked((v) => !v)}
+                  >
+                    {locked ? '🔓 Unlock to Arrange' : '🔒 Lock Button Layout'}
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={() => setShowHistory(true)}
+                  >
+                    📜 History & Udhaar
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={() => setShowConnectKds(true)}
+                  >
+                    📲 Connect Kitchen (QR)
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={() => navigate('/kds')}
+                  >
+                    🍳 Kitchen KDS
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={toggleFullscreen}
+                  >
+                    {isFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen Mode'}
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={() => setShowSettings(true)}
+                  >
+                    ⚙️ Store Settings
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -817,18 +827,20 @@ export default function PosPage() {
             <h2>
               {showCategorySidebar && selectedCategory !== 'All' ? selectedCategory : 'Items'} ({displayedItems.length})
             </h2>
+            <div className="spacer" />
             <button
               type="button"
               className={`btn sm-btn ${showCategorySidebar ? 'primary' : 'ghost'}`}
               onClick={toggleCategorySidebar}
               title="Toggle Blinkit-style categories sidebar"
-              style={{ fontSize: '0.78rem', padding: '3px 10px' }}
+              style={{ fontSize: '0.78rem', padding: '3px 10px', borderRadius: 20 }}
             >
               🏷️ Categories: {showCategorySidebar ? 'ON' : 'OFF'}
             </button>
-            <div className="spacer" />
             {!locked && (
-              <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Drag to rearrange • tap ✎ to edit</span>
+              <span className="items-toolbar-hint" style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+                Drag to rearrange • tap ✎ to edit
+              </span>
             )}
           </div>
 
@@ -1002,19 +1014,10 @@ export default function PosPage() {
             </div>
 
             <div className="cart-actions" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* Row 1: Clear, WhatsApp Share, and Pay */}
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button className="btn ghost" style={{ flex: 1, minWidth: 60 }} onClick={clearActiveBill}>
+              {/* Row 1: Clear and Pay */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn ghost" style={{ flex: 1 }} onClick={clearActiveBill}>
                   Clear
-                </button>
-                <button
-                  className="btn ghost"
-                  style={{ flex: 1.2, color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.4)', fontSize: '0.85rem' }}
-                  disabled={total <= 0}
-                  onClick={() => handleConfirmPayment({ paymentMethod: 'upi', status: 'unpaid', action: 'whatsapp' })}
-                  title="Share Bill & QR on WhatsApp without clearing tab"
-                >
-                  📲 WhatsApp
                 </button>
                 <button
                   className="btn green"
