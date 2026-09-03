@@ -51,6 +51,7 @@ import HistoryModal from '../components/HistoryModal';
 import InventoryModal from '../components/InventoryModal';
 import ConnectKdsModal from '../components/ConnectKdsModal';
 import { MenuScannerModal } from '../components/MenuScannerModal';
+import ArrangeCategoriesModal from '../components/ArrangeCategoriesModal';
 import { nextItemColor } from '../colors';
 import { printBill } from '../components/PrintReceipt';
 import { saveCachedItems, getCachedItems, queueOfflineBill, syncPendingBills } from '../offlineStore';
@@ -166,6 +167,14 @@ export default function PosPage() {
     () => localStorage.getItem('billkaro_show_categories') === 'true'
   );
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('billkaro_category_order_v1') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const [showArrangeCategories, setShowArrangeCategories] = useState(false);
 
   function toggleCategorySidebar() {
     setShowCategorySidebar((prev) => {
@@ -180,8 +189,44 @@ export default function PosPage() {
     items.forEach((i) => {
       if (i.category && i.category.trim()) set.add(i.category.trim());
     });
-    return ['All', ...Array.from(set)];
-  }, [items]);
+    const rawCats = Array.from(set);
+
+    if (categoryOrder.length > 0) {
+      rawCats.sort((a, b) => {
+        const idxA = categoryOrder.indexOf(a);
+        const idxB = categoryOrder.indexOf(b);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return a.localeCompare(b);
+      });
+    }
+
+    return ['All', ...rawCats];
+  }, [items, categoryOrder]);
+
+  function moveCategory(catName: string, direction: 'up' | 'down') {
+    setCategoryOrder((prev) => {
+      const currentList = categories.filter((c) => c !== 'All');
+      const fullList = Array.from(new Set([...prev.filter((c) => currentList.includes(c)), ...currentList]));
+      const idx = fullList.indexOf(catName);
+      if (idx === -1) return prev;
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= fullList.length) return prev;
+
+      const updated = [...fullList];
+      const temp = updated[idx];
+      updated[idx] = updated[targetIdx];
+      updated[targetIdx] = temp;
+      localStorage.setItem('billkaro_category_order_v1', JSON.stringify(updated));
+      return updated;
+    });
+  }
+
+  function handleSaveCategoryOrder(newOrder: string[]) {
+    setCategoryOrder(newOrder);
+    localStorage.setItem('billkaro_category_order_v1', JSON.stringify(newOrder));
+  }
 
   const displayedItems = useMemo(() => {
     if (!showCategorySidebar || selectedCategory === 'All') return items;
@@ -191,14 +236,27 @@ export default function PosPage() {
   function getCategoryIcon(cat: string): string {
     const c = cat.toLowerCase();
     if (c === 'all') return '🛒';
-    if (c.includes('veg') || c.includes('sabji')) return '🥦';
-    if (c.includes('chicken') || c.includes('non') || c.includes('meat')) return '🍗';
-    if (c.includes('plate') || c.includes('thali') || c.includes('meal')) return '🍛';
-    if (c.includes('drink') || c.includes('beverage') || c.includes('chai') || c.includes('tea') || c.includes('coffee')) return '☕';
-    if (c.includes('roti') || c.includes('bread') || c.includes('naan')) return '🫓';
-    if (c.includes('sweet') || c.includes('dessert') || c.includes('ice')) return '🍨';
-    if (c.includes('snack') || c.includes('fast') || c.includes('burger')) return '🍔';
-    if (c.includes('biryani') || c.includes('rice')) return '🍚';
+    if (c.includes('burger')) return '🍔';
+    if (c.includes('momo') || c.includes('dumpling') || c.includes('dimsum')) return '🥟';
+    if (c.includes('pasta')) return '🍝';
+    if (c.includes('noodle') || c.includes('maggi') || c.includes('chowmein')) return '🍜';
+    if (c.includes('fry') || c.includes('fries')) return '🍟';
+    if (c.includes('pizza')) return '🍕';
+    if (c.includes('sandwich') || c.includes('toast') || c.includes('sub')) return '🥪';
+    if (c.includes('pav') || c.includes('bhaji') || c.includes('chaat') || c.includes('bhel')) return '🍲';
+    if (c.includes('cheese') || c.includes('paneer')) return '🧀';
+    if (c.includes('potato') || c.includes('aloo') || c.includes('chilli')) return '🌶️';
+    if (c.includes('chicken') || c.includes('non') || c.includes('meat') || c.includes('mutton') || c.includes('fish') || c.includes('egg')) return '🍗';
+    if (c.includes('combo') || c.includes('thali') || c.includes('meal')) return '🍱';
+    if (c.includes('biryani') || c.includes('rice') || c.includes('pulao')) return '🍚';
+    if (c.includes('roti') || c.includes('bread') || c.includes('naan') || c.includes('paratha')) return '🫓';
+    if (c.includes('roll') || c.includes('wrap') || c.includes('frankie')) return '🌯';
+    if (c.includes('cooler') || c.includes('shake') || c.includes('juice') || c.includes('soda') || c.includes('cold') || c.includes('drink') || c.includes('beverage')) return '🥤';
+    if (c.includes('chai') || c.includes('tea') || c.includes('coffee') || c.includes('cappuccino')) return '☕';
+    if (c.includes('sweet') || c.includes('dessert') || c.includes('ice') || c.includes('cake') || c.includes('waffle')) return '🍨';
+    if (c.includes('veg') || c.includes('sabji') || c.includes('salad')) return '🥗';
+    if (c.includes('soup')) return '🥣';
+    if (c.includes('snack')) return '🍿';
     return '🏷️';
   }
 
@@ -725,6 +783,12 @@ export default function PosPage() {
                   </button>
                   <button
                     className="menu-dropdown-item"
+                    onClick={() => setShowArrangeCategories(true)}
+                  >
+                    ↕️ Arrange Categories
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
                     onClick={() => setShowInventory(true)}
                   >
                     📦 Inventory & Stock
@@ -838,8 +902,19 @@ export default function PosPage() {
               🏷️ Categories: {showCategorySidebar ? 'ON' : 'OFF'}
             </button>
             {!locked && (
+              <button
+                type="button"
+                className="btn sm-btn ghost"
+                onClick={() => setShowArrangeCategories(true)}
+                style={{ fontSize: '0.78rem', padding: '3px 10px', borderRadius: 20, borderColor: '#38bdf8', color: '#38bdf8' }}
+                title="Arrange category order"
+              >
+                ↕️ Reorder Categories
+              </button>
+            )}
+            {!locked && (
               <span className="items-toolbar-hint" style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-                Drag to rearrange • tap ✎ to edit
+                Drag items • tap ✎ to edit
               </span>
             )}
           </div>
@@ -847,22 +922,65 @@ export default function PosPage() {
           {showCategorySidebar ? (
             <div className="blinkit-catalog-wrap">
               <div className="blinkit-sidebar">
-                {categories.map((cat) => {
+                {categories.map((cat, catIdx) => {
                   const count = cat === 'All' ? items.length : items.filter((i) => (i.category || 'General').trim() === cat).length;
                   return (
-                    <button
-                      key={cat}
-                      type="button"
-                      className={`blinkit-cat-item ${selectedCategory === cat ? 'active' : ''}`}
-                      onClick={() => setSelectedCategory(cat)}
-                      title={`Filter by ${cat}`}
-                    >
-                      <span className="blinkit-cat-icon">{getCategoryIcon(cat)}</span>
-                      <span className="blinkit-cat-name">{cat}</span>
-                      <span className="blinkit-cat-count">{count}</span>
-                    </button>
+                    <div key={cat} className="blinkit-cat-item-wrap">
+                      <button
+                        type="button"
+                        className={`blinkit-cat-item ${selectedCategory === cat ? 'active' : ''}`}
+                        onClick={() => setSelectedCategory(cat)}
+                        title={`Filter by ${cat}`}
+                      >
+                        <span className="blinkit-cat-icon">{getCategoryIcon(cat)}</span>
+                        <span className="blinkit-cat-name">{cat}</span>
+                        <span className="blinkit-cat-count">{count}</span>
+                      </button>
+
+                      {!locked && cat !== 'All' && (
+                        <div className="cat-reorder-btns">
+                          <button
+                            type="button"
+                            className="cat-arrow-btn"
+                            disabled={catIdx <= 1}
+                            style={{ opacity: catIdx <= 1 ? 0.3 : 1 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveCategory(cat, 'up');
+                            }}
+                            title="Move Category Up"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            className="cat-arrow-btn"
+                            disabled={catIdx === categories.length - 1}
+                            style={{ opacity: catIdx === categories.length - 1 ? 0.3 : 1 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveCategory(cat, 'down');
+                            }}
+                            title="Move Category Down"
+                          >
+                            ▼
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
+
+                {!locked && (
+                  <button
+                    type="button"
+                    className="cat-arrange-modal-btn"
+                    onClick={() => setShowArrangeCategories(true)}
+                    title="Open Category Reorder Manager"
+                  >
+                    ↕️ Reorder All
+                  </button>
+                )}
               </div>
 
               <div className="blinkit-content">
@@ -1117,6 +1235,17 @@ export default function PosPage() {
       )}
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showArrangeCategories && (
+        <ArrangeCategoriesModal
+          categories={categories}
+          categoryIcons={getCategoryIcon}
+          itemsCountByCategory={(cat) =>
+            cat === 'All' ? items.length : items.filter((i) => (i.category || 'General').trim() === cat).length
+          }
+          onSave={handleSaveCategoryOrder}
+          onClose={() => setShowArrangeCategories(false)}
+        />
+      )}
 
       {/* Offscreen Receipt Component for PNG/JPG Image Generation */}
       {user && (
