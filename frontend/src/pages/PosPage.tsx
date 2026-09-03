@@ -159,6 +159,47 @@ export default function PosPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Blinkit-style Category Sidebar (Optional / Toggleable)
+  const [showCategorySidebar, setShowCategorySidebar] = useState<boolean>(
+    () => localStorage.getItem('billkaro_show_categories') === 'true'
+  );
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+
+  function toggleCategorySidebar() {
+    setShowCategorySidebar((prev) => {
+      const next = !prev;
+      localStorage.setItem('billkaro_show_categories', String(next));
+      return next;
+    });
+  }
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((i) => {
+      if (i.category && i.category.trim()) set.add(i.category.trim());
+    });
+    return ['All', ...Array.from(set)];
+  }, [items]);
+
+  const displayedItems = useMemo(() => {
+    if (!showCategorySidebar || selectedCategory === 'All') return items;
+    return items.filter((i) => (i.category || 'General').trim() === selectedCategory);
+  }, [items, showCategorySidebar, selectedCategory]);
+
+  function getCategoryIcon(cat: string): string {
+    const c = cat.toLowerCase();
+    if (c === 'all') return '🛒';
+    if (c.includes('veg') || c.includes('sabji')) return '🥦';
+    if (c.includes('chicken') || c.includes('non') || c.includes('meat')) return '🍗';
+    if (c.includes('plate') || c.includes('thali') || c.includes('meal')) return '🍛';
+    if (c.includes('drink') || c.includes('beverage') || c.includes('chai') || c.includes('tea') || c.includes('coffee')) return '☕';
+    if (c.includes('roti') || c.includes('bread') || c.includes('naan')) return '🫓';
+    if (c.includes('sweet') || c.includes('dessert') || c.includes('ice')) return '🍨';
+    if (c.includes('snack') || c.includes('fast') || c.includes('burger')) return '🍔';
+    if (c.includes('biryani') || c.includes('rice')) return '🍚';
+    return '🏷️';
+  }
+
   useEffect(() => {
     function onFSChange() {
       setIsFullscreen(!!document.fullscreenElement);
@@ -360,7 +401,7 @@ export default function PosPage() {
   }
 
   function clearActiveBill() {
-    updateActiveBill((b) => ({ ...b, lines: [] }));
+    updateActiveBill((b) => ({ ...b, lines: [], savedBillId: undefined, billShared: false }));
   }
 
   function addTab() {
@@ -466,13 +507,23 @@ export default function PosPage() {
       status: details.status,
     };
 
-    let savedBillId: number | string | undefined;
+    let savedBillId = activeBill.savedBillId;
 
     if (navigator.onLine) {
       try {
-        const res = await api.post('/bills', payload);
-        savedBillId = res.data?.id || res.data?.bill?.id;
-        fetchItems();
+        if (savedBillId && details.action === 'save') {
+          await api.put(`/bills/${savedBillId}/status`, {
+            status: 'paid',
+            paymentMethod: details.paymentMethod,
+          });
+        } else {
+          const res = await api.post('/bills', {
+            ...payload,
+            status: details.status,
+          });
+          savedBillId = res.data?.id || res.data?.bill?.id;
+          fetchItems();
+        }
       } catch (err) {
         console.warn('Network error saving bill, queuing offline:', err);
         const queued = await queueOfflineBill(payload);
@@ -485,8 +536,13 @@ export default function PosPage() {
       alert('⚡ Offline Mode: Bill saved locally! Will sync automatically when back online.');
     }
 
-    const invNumber = savedBillId ? formatInvoiceNumber(savedBillId) : '';
-    const billDisplay = invNumber ? `${invNumber} (${activeBill.label})` : activeBill.label;
+    const invNumber = savedBillId ? formatInvoiceNumber(savedBillId) : (activeBill.savedBillId ? formatInvoiceNumber(activeBill.savedBillId) : 'INV-0001');
+
+    updateActiveBill((b) => ({
+      ...b,
+      savedBillId,
+      billShared: details.action === 'whatsapp' ? true : b.billShared,
+    }));
 
     setCurrentReceiptDetails({
       paymentMethod: details.paymentMethod,
@@ -497,7 +553,7 @@ export default function PosPage() {
 
     if (details.action === 'print' && details.paymentMethod !== 'udhaar' && user) {
       printBill({
-        bill: { ...activeBill, label: billDisplay },
+        bill: { ...activeBill, label: `Bill No: ${invNumber}` },
         user,
         items,
         subtotal,
@@ -513,7 +569,10 @@ export default function PosPage() {
         })
         .join('\n');
 
-      const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nInvoice / Bill: *${billDisplay}*${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${tax > 0 ? `\nTax (${user?.taxPercent || 0}%): ₹${tax.toFixed(2)}` : ''}\n*Total Amount: ₹${total.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `PAID via ${details.paymentMethod.toUpperCase()}`}\n----------------------------------\n\nThank you for visiting us!`;
+      const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill No: *${invNumber}*${activeBill.label ? ` (Table: ${activeBill.label})` : ''}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${tax > 0 ? `\nTax (${user?.taxPercent || 0}%): ₹${tax.toFixed(2)}` : ''}\n*Total Amount: ₹${total.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `AWAITING PAYMENT / via ${(details.paymentMethod || 'UPI').toUpperCase()}`}\n----------------------------------\n\nScan QR Code on Receipt image to Pay via GPay/PhonePe/Paytm!\nThank you for visiting us!`;
+
+      // Microtick to ensure ReceiptCard receives invoiceNumber before snapshot
+      await new Promise((r) => setTimeout(r, 120));
 
       const sendWhatsAppText = () => {
         if (details.customerPhone && details.customerPhone.trim()) {
@@ -529,11 +588,11 @@ export default function PosPage() {
         if (receiptRef.current) {
           const blob = await toBlob(receiptRef.current, { pixelRatio: 2 });
           if (blob) {
-            const file = new File([blob], `${activeBill.label.replace(/\s+/g, '_')}_Receipt.png`, { type: 'image/png' });
+            const file = new File([blob], `${invNumber}_${activeBill.label.replace(/\s+/g, '_')}.png`, { type: 'image/png' });
             
             if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
               await navigator.share({
-                title: `BillKaro Receipt - ${activeBill.label}`,
+                title: `BillKaro Receipt - ${invNumber}`,
                 text: `Receipt from ${user?.storeName || 'BillKaro'} (Total: ₹${total.toFixed(2)})`,
                 files: [file],
               });
@@ -541,7 +600,7 @@ export default function PosPage() {
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `${activeBill.label.replace(/\s+/g, '_')}_Receipt.png`;
+              a.download = `${invNumber}_Receipt.png`;
               a.click();
               URL.revokeObjectURL(url);
 
@@ -559,8 +618,15 @@ export default function PosPage() {
       }
     }
 
-    clearActiveBill();
-    setShowPayment(false);
+    if (details.action === 'save') {
+      clearActiveBill();
+      setShowPayment(false);
+    } else if (details.action === 'whatsapp') {
+      setShowPayment(false);
+      alert(`📲 Receipt shared for Bill No: ${invNumber}! Table "${activeBill.label}" remains open on screen until payment is received.`);
+    } else {
+      setShowPayment(false);
+    }
   }
 
   const [kdsSentToast, setKdsSentToast] = useState(false);
@@ -603,6 +669,13 @@ export default function PosPage() {
 
         <button className="icon-btn" onClick={openAddItem} title="Add new product item">
           <span>➕</span> <span className="icon-btn-label">Item</span>
+        </button>
+        <button
+          className={`icon-btn ${showCategorySidebar ? 'active-toggle' : ''}`}
+          onClick={toggleCategorySidebar}
+          title="Toggle Blinkit-style Category Sidebar"
+        >
+          <span>🏷️</span> <span className="icon-btn-label">Categories</span>
         </button>
         <button className="icon-btn" onClick={() => setShowInventory(true)} title="Stock & Inventory Manager">
           <span>📦</span> <span className="icon-btn-label">Stock</span>
@@ -686,6 +759,7 @@ export default function PosPage() {
             >
               <span className="tab-label">
                 {b.label}
+                {b.billShared && <span style={{ color: '#38bdf8', fontSize: '11px', marginLeft: 4 }} title="Bill Shared (Unpaid)">📲</span>}
                 {t.total > 0 && <em className="tab-total">₹{t.total.toFixed(0)}</em>}
               </span>
               <span
@@ -724,35 +798,95 @@ export default function PosPage() {
         {/* Items */}
         <div className="items-panel">
           <div className="items-toolbar">
-            <h2>Items</h2>
+            <h2>
+              {showCategorySidebar && selectedCategory !== 'All' ? selectedCategory : 'Items'} ({displayedItems.length})
+            </h2>
+            <button
+              type="button"
+              className={`btn sm-btn ${showCategorySidebar ? 'primary' : 'ghost'}`}
+              onClick={toggleCategorySidebar}
+              title="Toggle Blinkit-style categories sidebar"
+              style={{ fontSize: '0.78rem', padding: '3px 10px' }}
+            >
+              🏷️ Categories: {showCategorySidebar ? 'ON' : 'OFF'}
+            </button>
+            <div className="spacer" />
             {!locked && (
               <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Drag to rearrange • tap ✎ to edit</span>
             )}
           </div>
 
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-            <SortableContext items={items.map((i) => i.id)} strategy={rectSortingStrategy}>
-              <div className="item-grid">
-                {items.length === 0 && (
-                  <div className="empty-hint">
-                    No items yet. Tap <b>➕ Item</b> above to add your first product —
-                    it will instantly appear here as a button.
-                  </div>
-                )}
-                {items.map((item) => (
-                  <SortableItemButton
-                    key={item.id}
-                    item={item}
-                    qty={qtyByItem.get(item.id) ?? 0}
-                    locked={locked}
-                    onTap={addToCart}
-                    onDecrement={removeFromCart}
-                    onEdit={openEditItem}
-                  />
-                ))}
+          {showCategorySidebar ? (
+            <div className="blinkit-catalog-wrap">
+              <div className="blinkit-sidebar">
+                {categories.map((cat) => {
+                  const count = cat === 'All' ? items.length : items.filter((i) => (i.category || 'General').trim() === cat).length;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      className={`blinkit-cat-item ${selectedCategory === cat ? 'active' : ''}`}
+                      onClick={() => setSelectedCategory(cat)}
+                      title={`Filter by ${cat}`}
+                    >
+                      <span className="blinkit-cat-icon">{getCategoryIcon(cat)}</span>
+                      <span className="blinkit-cat-name">{cat}</span>
+                      <span className="blinkit-cat-count">{count}</span>
+                    </button>
+                  );
+                })}
               </div>
-            </SortableContext>
-          </DndContext>
+
+              <div className="blinkit-content">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                  <SortableContext items={displayedItems.map((i) => i.id)} strategy={rectSortingStrategy}>
+                    <div className="item-grid">
+                      {displayedItems.length === 0 && (
+                        <div className="empty-hint">
+                          No items found in <b>{selectedCategory}</b>.
+                        </div>
+                      )}
+                      {displayedItems.map((item) => (
+                        <SortableItemButton
+                          key={item.id}
+                          item={item}
+                          qty={qtyByItem.get(item.id) ?? 0}
+                          locked={locked}
+                          onTap={addToCart}
+                          onDecrement={removeFromCart}
+                          onEdit={openEditItem}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              </div>
+            </div>
+          ) : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={items.map((i) => i.id)} strategy={rectSortingStrategy}>
+                <div className="item-grid">
+                  {items.length === 0 && (
+                    <div className="empty-hint">
+                      No items yet. Tap <b>➕ Item</b> above to add your first product —
+                      it will instantly appear here as a button.
+                    </div>
+                  )}
+                  {items.map((item) => (
+                    <SortableItemButton
+                      key={item.id}
+                      item={item}
+                      qty={qtyByItem.get(item.id) ?? 0}
+                      locked={locked}
+                      onTap={addToCart}
+                      onDecrement={removeFromCart}
+                      onEdit={openEditItem}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
 
           {/* Sticky Mobile Floating Cart Bar */}
           {activeBill && activeBill.lines.length > 0 && (
@@ -777,6 +911,11 @@ export default function PosPage() {
               </button>
               <span>🛒</span>
               <span>{activeBill?.label}</span>
+              {activeBill?.billShared && (
+                <span style={{ fontSize: '0.72rem', background: '#0284c7', color: '#e0f2fe', padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
+                  📲 Bill {activeBill.savedBillId ? formatInvoiceNumber(activeBill.savedBillId) : ''} Shared (Unpaid)
+                </span>
+              )}
               {activeBill?.kdsStatus === 'ready' && (
                 <span style={{ fontSize: '0.75rem', background: '#166534', color: '#86efac', padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
                   ✅ Food Ready!
@@ -840,16 +979,27 @@ export default function PosPage() {
             </div>
 
             <div className="cart-actions" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* Row 1: Restored Clean Side-by-side Layout */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn ghost" style={{ flex: 1 }} onClick={clearActiveBill}>Clear</button>
+              {/* Row 1: Clear, WhatsApp Share, and Pay */}
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn ghost" style={{ flex: 1, minWidth: 60 }} onClick={clearActiveBill}>
+                  Clear
+                </button>
+                <button
+                  className="btn ghost"
+                  style={{ flex: 1.2, color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.4)', fontSize: '0.85rem' }}
+                  disabled={total <= 0}
+                  onClick={() => handleConfirmPayment({ paymentMethod: 'upi', status: 'unpaid', action: 'whatsapp' })}
+                  title="Share Bill & QR on WhatsApp without clearing tab"
+                >
+                  📲 WhatsApp
+                </button>
                 <button
                   className="btn green"
                   style={{ flex: 2 }}
                   disabled={total <= 0}
                   onClick={() => setShowPayment(true)}
                 >
-                  💳 Pay ₹{total.toFixed(2)}
+                  💳 Pay ₹{total.toFixed(0)}
                 </button>
               </div>
 

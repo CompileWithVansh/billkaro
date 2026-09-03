@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { getItemDesc } from '../types';
+import { getItemDesc, formatInvoiceNumber } from '../types';
 import type { Bill, Item, User } from '../types';
 
 interface Props {
@@ -46,9 +46,7 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
     timeStyle: 'short',
   });
 
-  const billDisplay = invoiceNumber
-    ? `${invoiceNumber} (${bill.label})`
-    : bill.label;
+  const billNumber = invoiceNumber || (bill.savedBillId ? formatInvoiceNumber(bill.savedBillId) : 'INV-0001');
 
   return (
     <div
@@ -72,8 +70,17 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
         </h2>
         {user.address && <div style={{ fontSize: '13px', color: '#64748b' }}>{user.address}</div>}
         {user.phone && <div style={{ fontSize: '13px', color: '#64748b' }}>Ph: {user.phone}</div>}
-        <div style={{ marginTop: '10px', fontSize: '13px', color: '#475569', fontWeight: '700' }}>
-          {dateStr} • {billDisplay}
+        
+        <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '14px', color: '#475569' }}>
+          <span style={{ color: '#0f172a', fontWeight: '800' }}>Bill No: {billNumber}</span>
+          {bill.label && (
+            <span style={{ background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: '700', color: '#475569' }}>
+              Table: {bill.label}
+            </span>
+          )}
+        </div>
+        <div style={{ marginTop: '4px', fontSize: '12px', color: '#94a3b8' }}>
+          {dateStr}
         </div>
       </div>
 

@@ -72,7 +72,7 @@ export default function PaymentModal({
         paymentMethod: method,
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
-        status: 'paid',
+        status: action === 'whatsapp' ? 'unpaid' : 'paid',
         action,
       });
     }
@@ -162,10 +162,10 @@ export default function PaymentModal({
           <button
             type="button"
             className="btn green block"
-            style={{ fontSize: '1.1rem', minHeight: '52px' }}
+            style={{ fontSize: '1.05rem', minHeight: '48px', fontWeight: 700 }}
             onClick={() => handleComplete('save')}
           >
-            {method === 'udhaar' ? '📋 Save as Udhaar' : '✅ Paid'}
+            {method === 'udhaar' ? '📋 Save as Udhaar (Close Tab)' : '✅ Paid & Close Tab'}
           </button>
 
           {/* Secondary Action Buttons */}
@@ -173,15 +173,16 @@ export default function PaymentModal({
             <button
               type="button"
               className="btn ghost"
-              style={{ flex: 1, fontSize: '0.9rem' }}
+              style={{ flex: 1.2, fontSize: '0.85rem', color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.4)' }}
               onClick={() => handleComplete('whatsapp')}
+              title="Share bill & QR on WhatsApp without closing the tab"
             >
-              📲 WhatsApp Receipt
+              📲 Share on WhatsApp (Keep Open)
             </button>
             <button
               type="button"
               className="btn ghost"
-              style={{ flex: 1, fontSize: '0.9rem' }}
+              style={{ flex: 0.8, fontSize: '0.85rem' }}
               onClick={() => handleComplete('print')}
             >
               🖨️ Print

@@ -58,9 +58,11 @@ export function getBillDisplayLabel(bill: { id?: number | string; label?: string
 
 export interface Bill {
   id: string;      // client-side tab id
-  label: string;   // e.g. "Table 1"
+  label: string;   // e.g. "T1"
   lines: CartLine[];
   kdsStatus?: 'preparing' | 'ready';
+  savedBillId?: number | string;  // persisted backend bill ID once generated / shared
+  billShared?: boolean;           // whether bill was shared on WhatsApp awaiting payment
 }
 
 export interface SavedBill {
