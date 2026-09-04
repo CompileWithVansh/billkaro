@@ -32,12 +32,13 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// On 401, clear token so the app redirects to login.
+// On 401, clear token and cached user so the app redirects to login.
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err?.response?.status === 401) {
       setToken(null);
+      localStorage.removeItem('billkaro_user');
     }
     return Promise.reject(err);
   }

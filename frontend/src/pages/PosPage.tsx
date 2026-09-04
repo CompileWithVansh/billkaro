@@ -600,13 +600,11 @@ export default function PosPage() {
         } catch (err) {
           console.warn('Network error saving bill, queuing offline:', err);
           const queued = await queueOfflineBill(payload);
-          savedBillId = (queued as any)?.tempId;
-          alert('⚡ Saved offline! Bill will auto-sync when network is stable.');
+          savedBillId = queued.tempId;
         }
       } else {
         const queued = await queueOfflineBill(payload);
-        savedBillId = (queued as any)?.tempId;
-        alert('⚡ Offline Mode: Bill saved locally! Will sync automatically when back online.');
+        savedBillId = queued.tempId;
       }
 
       const invNumber = savedBillId ? formatInvoiceNumber(savedBillId) : (activeBill.savedBillId ? formatInvoiceNumber(activeBill.savedBillId) : 'INV-0001');
@@ -728,8 +726,11 @@ export default function PosPage() {
       <div className="topbar">
         <div className="topbar-brand">
           <div className="logo">Bill<span>Karo</span></div>
-          <span className={`online-badge ${isOnline ? 'online' : 'offline'}`}>
-            <span>{isOnline ? '🟢' : '🔴'}</span>
+          <span
+            className={`online-badge ${isOnline ? 'online' : 'offline'}`}
+            title={isOnline ? 'Connected to cloud server' : 'Offline Mode — Billing and receipts active'}
+          >
+            <span>{isOnline ? '🟢' : '⚡'}</span>
             <span className="online-badge-text">{isOnline ? 'Online' : 'Offline'}</span>
           </span>
         </div>

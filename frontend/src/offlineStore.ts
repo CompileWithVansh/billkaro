@@ -50,16 +50,17 @@ export async function getCachedItems(): Promise<Item[]> {
   }
 }
 
-export async function queueOfflineBill(billData: any): Promise<void> {
+export async function queueOfflineBill(billData: any): Promise<{ tempId: string }> {
+  const tempId = `OFF-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
   try {
     const db = await openDB();
     const tx = db.transaction('pending_bills', 'readwrite');
     const store = tx.objectStore('pending_bills');
-    const tempId = `offline-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     store.put({ tempId, ...billData, createdAt: new Date().toISOString() });
   } catch (err) {
     console.error('Failed to queue bill offline:', err);
   }
+  return { tempId };
 }
 
 export async function getPendingOfflineBills(): Promise<any[]> {
