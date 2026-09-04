@@ -15,11 +15,13 @@
     <title>BillKaro POS</title>
     <script>
       (function() {
+        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         var isStandalone = ('standalone' in window.navigator && window.navigator.standalone) ||
           window.matchMedia('(display-mode: standalone)').matches ||
           window.matchMedia('(display-mode: fullscreen)').matches;
-        if (isStandalone) {
-          document.documentElement.classList.add('is-standalone-pwa');
+        if (isIOS && isStandalone) {
+          document.documentElement.classList.add('is-ios-standalone');
         }
       })();
     </script>

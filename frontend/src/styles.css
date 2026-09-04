@@ -1530,40 +1530,25 @@ select {
   vertical-align: middle;
 }
 
-/* ---------- iOS / iPadOS Standalone PWA & Fullscreen Safe Area Fixes ---------- */
-.is-standalone-pwa .topbar {
+/* ---------- ONLY for iOS / iPadOS Standalone PWA (iPhone / iPad Home Screen) ---------- */
+/* Android PWAs and desktop browsers already manage their status bar and do NOT run under the clock */
+.is-ios-standalone .topbar {
   padding-top: max(54px, calc(env(safe-area-inset-top, 0px) + 12px)) !important;
   padding-bottom: 12px !important;
 }
 
-.is-standalone-pwa .cart-footer {
+.is-ios-standalone .cart-footer {
   padding-bottom: max(34px, calc(16px + env(safe-area-inset-bottom, 0px))) !important;
 }
 
-.is-standalone-pwa .items-panel {
+.is-ios-standalone .items-panel {
   padding-bottom: max(34px, calc(16px + env(safe-area-inset-bottom, 0px))) !important;
 }
 
-.is-standalone-pwa .blinkit-sidebar {
+.is-ios-standalone .blinkit-sidebar {
   height: calc(100vh - 200px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
   max-height: calc(100dvh - 200px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
 }
 
-@media all and (display-mode: standalone), (display-mode: fullscreen) {
-  .topbar {
-    padding-top: max(54px, calc(env(safe-area-inset-top, 0px) + 12px)) !important;
-    padding-bottom: 12px !important;
-  }
-  .cart-footer {
-    padding-bottom: max(34px, calc(16px + env(safe-area-inset-bottom, 0px))) !important;
-  }
-  .items-panel {
-    padding-bottom: max(34px, calc(16px + env(safe-area-inset-bottom, 0px))) !important;
-  }
-  .blinkit-sidebar {
-    height: calc(100vh - 200px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-    max-height: calc(100dvh - 200px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-  }
-}
 
 
