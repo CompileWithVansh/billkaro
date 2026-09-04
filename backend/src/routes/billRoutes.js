@@ -1,6 +1,7 @@
 import express from 'express';
-import { billsRepo, itemsRepo, getPool } from '../db.js';
+import { billsRepo, itemsRepo, usersRepo, getPool } from '../db.js';
 import { requireAuth } from '../auth.js';
+import { sanitizeText, sanitizePhone } from '../utils/sanitize.js';
 
 const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -39,15 +40,16 @@ router.post(
   '/kds/send',
   wrap(async (req, res) => {
     const { label, items } = req.body || {};
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'Cart items required to send ticket to kitchen' });
+    if (!Array.isArray(items) || items.length === 0 || items.length > 200) {
+      return res.status(400).json({ error: 'Cart items required (max 200 items)' });
     }
     const storeId = String(req.userId);
+    const cleanLabel = sanitizeText(label) || 'Kitchen Ticket';
     const orderTicket = {
       id: 'KDS-' + Date.now().toString().slice(-4),
-      label: label || 'Kitchen Ticket',
+      label: cleanLabel,
       items,
-      total: items.reduce((s, l) => s + (l.price || 0) * (l.qty || 1), 0),
+      total: items.reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.qty) || 1), 0),
       createdAt: new Date().toISOString(),
       status: 'preparing',
     };
@@ -81,15 +83,50 @@ setInterval(() => {
 router.post(
   '/',
   wrap(async (req, res) => {
-    const { label, items, subtotal, tax, total, paymentMethod, customerName, customerPhone, status, clientBillId } = req.body || {};
-    if (!Array.isArray(items)) {
-      return res.status(400).json({ error: 'items must be an array' });
+    const { label, items, paymentMethod, customerName, customerPhone, status, clientBillId } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0 || items.length > 200) {
+      return res.status(400).json({ error: 'Bill must have between 1 and 200 items' });
     }
 
     const userId = Number(req.userId);
+
+    // 1. Verify line items & prices (Catalog price lock against internal theft)
+    for (const line of items) {
+      const linePrice = typeof line.price === 'number' ? line.price : Number(line.price);
+      const lineQty = typeof line.qty === 'number' ? line.qty : Number(line.qty || 1);
+
+      if (isNaN(linePrice) || linePrice < 0 || linePrice > 999999) {
+        return res.status(400).json({ error: 'Item price must be between 0 and 999,999' });
+      }
+      if (isNaN(lineQty) || lineQty <= 0 || lineQty > 9999) {
+        return res.status(400).json({ error: 'Item quantity must be between 1 and 9,999' });
+      }
+
+      // If line is linked to catalog itemId, verify price matches database (1 rupee tolerance for float precision)
+      if (line.itemId) {
+        const dbItem = await itemsRepo.findById(line.itemId, userId);
+        if (dbItem && Math.abs(linePrice - Number(dbItem.price)) > 1) {
+          return res.status(400).json({
+            error: `Price mismatch for ${dbItem.name}. Expected ₹${dbItem.price}, got ₹${linePrice}`,
+          });
+        }
+      }
+    }
+
+    // 2. Authoritative server-side financial math (prevents client-side total manipulation)
+    const user = await usersRepo.findById(userId);
+    const taxPercent = user && typeof user.tax_percent === 'number' && user.tax_percent >= 0 ? user.tax_percent : 0;
+
+    const serverSubtotal = items.reduce(
+      (sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1),
+      0
+    );
+    const serverTax = Number((serverSubtotal * (taxPercent / 100)).toFixed(2));
+    const serverTotal = Number((serverSubtotal + serverTax).toFixed(2));
+
     const now = Date.now();
 
-    // 1. Check clientBillId if provided by frontend
+    // 3. Check clientBillId if provided by frontend for idempotency
     if (clientBillId) {
       const clientKey = `client_${userId}_${clientBillId}`;
       const existing = recentBillsMap.get(clientKey);
@@ -99,24 +136,32 @@ router.post(
       }
     }
 
-    // 2. Rapid double-tap safeguard: check if identical order fingerprint was created in last 4 seconds
-    const fingerprintKey = `fp_${userId}_${Number(total).toFixed(2)}_${items.length}_${items.map((i) => `${i.itemId || i.id}:${i.qty}`).sort().join(',')}`;
+    // 4. Rapid double-tap safeguard: check if identical order fingerprint was created in last 4 seconds
+    const fingerprintKey = `fp_${userId}_${serverTotal.toFixed(2)}_${items.length}_${items.map((i) => `${i.itemId || i.id}:${i.qty}`).sort().join(',')}`;
     const recentFp = recentBillsMap.get(fingerprintKey);
     if (recentFp && (now - recentFp.timestamp < 4000)) {
       console.log(`[Dedupe] Prevented rapid double-tap duplicate bill within 4s for user ${userId}`);
       return res.status(200).json({ id: recentFp.id, bill: recentFp.bill, deduplicated: true });
     }
 
+    // 5. Sanitize customer and order metadata
+    const cleanCustomerName = sanitizeText(customerName) || null;
+    const cleanCustomerPhone = sanitizePhone(customerPhone) || null;
+    const cleanLabel = sanitizeText(label) || 'Bill';
+    const validPaymentMethods = ['upi', 'cash', 'card', 'udhaar', 'other'];
+    const cleanPaymentMethod = validPaymentMethods.includes(paymentMethod) ? paymentMethod : 'upi';
+    const cleanStatus = status === 'unpaid' ? 'unpaid' : 'paid';
+
     const bill = await billsRepo.create(userId, {
-      label,
+      label: cleanLabel,
       items,
-      subtotal,
-      tax,
-      total,
-      paymentMethod: paymentMethod || 'upi',
-      customerName: customerName || null,
-      customerPhone: customerPhone || null,
-      status: status || 'paid',
+      subtotal: serverSubtotal,
+      tax: serverTax,
+      total: serverTotal,
+      paymentMethod: cleanPaymentMethod,
+      customerName: cleanCustomerName,
+      customerPhone: cleanCustomerPhone,
+      status: cleanStatus,
     });
 
     // Auto-deduct stock for sold items

@@ -1,6 +1,7 @@
 import express from 'express';
 import { itemsRepo } from '../db.js';
 import { requireAuth } from '../auth.js';
+import { sanitizeText } from '../utils/sanitize.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -20,6 +21,48 @@ function mapItem(r) {
   };
 }
 
+function parseAndValidateItem(body) {
+  const { name, price, color, category, description, stockQuantity } = body || {};
+  const cleanName = sanitizeText(name);
+  if (!cleanName || cleanName.length > 100) {
+    return { error: 'Item name must be between 1 and 100 characters' };
+  }
+  const numPrice = typeof price === 'number' ? price : Number(price);
+  if (isNaN(numPrice) || numPrice < 0 || numPrice > 999999) {
+    return { error: 'Price must be a valid number between 0 and 999,999' };
+  }
+  const cleanCategory = sanitizeText(category);
+  if (cleanCategory.length > 50) {
+    return { error: 'Category must be under 50 characters' };
+  }
+  const cleanDescription = sanitizeText(description, { allowNewlines: true });
+  if (cleanDescription.length > 500) {
+    return { error: 'Description must be under 500 characters' };
+  }
+  const cleanColor = sanitizeText(color);
+  if (cleanColor.length > 20) {
+    return { error: 'Color must be under 20 characters' };
+  }
+  let cleanStock = null;
+  if (stockQuantity !== null && stockQuantity !== undefined && stockQuantity !== '') {
+    const s = Number(stockQuantity);
+    if (!Number.isInteger(s) || s < 0 || s > 999999) {
+      return { error: 'Stock quantity must be an integer between 0 and 999,999' };
+    }
+    cleanStock = s;
+  }
+  return {
+    value: {
+      name: cleanName,
+      price: numPrice,
+      color: cleanColor || '#4f46e5',
+      category: cleanCategory,
+      description: cleanDescription,
+      stockQuantity: cleanStock,
+    },
+  };
+}
+
 // GET /api/items
 router.get(
   '/',
@@ -33,9 +76,10 @@ router.get(
 router.post(
   '/',
   wrap(async (req, res) => {
-    const { name, price, color, category, description, stockQuantity } = req.body || {};
-    if (!name) return res.status(400).json({ error: 'name is required' });
-    const item = await itemsRepo.create(req.userId, { name, price, color, category, description, stockQuantity });
+    const { error, value } = parseAndValidateItem(req.body);
+    if (error) return res.status(400).json({ error });
+
+    const item = await itemsRepo.create(req.userId, value);
     res.status(201).json({ item: mapItem(item) });
   })
 );
@@ -57,8 +101,10 @@ router.put(
 router.put(
   '/:id',
   wrap(async (req, res) => {
-    const { name, price, color, category, description, stockQuantity } = req.body || {};
-    const item = await itemsRepo.update(req.params.id, req.userId, { name, price, color, category, description, stockQuantity });
+    const { error, value } = parseAndValidateItem(req.body);
+    if (error) return res.status(400).json({ error });
+
+    const item = await itemsRepo.update(req.params.id, req.userId, value);
     if (!item) return res.status(404).json({ error: 'Item not found' });
     res.json({ item: mapItem(item) });
   })

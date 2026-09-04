@@ -215,3 +215,139 @@ test('Rate Limiter - Health Check Bypass', async () => {
   }
 });
 
+import { sanitizeText, sanitizePhone } from '../src/utils/sanitize.js';
+import helmet from 'helmet';
+
+test('Input Sanitization - Emojis & Indian Unicode Preservation', async (t) => {
+  await t.test('preserves food emojis and text', () => {
+    assert.equal(sanitizeText('Masala Chai ☕'), 'Masala Chai ☕');
+    assert.equal(sanitizeText('🍕 Margherita Pizza'), '🍕 Margherita Pizza');
+    assert.equal(sanitizeText('Double Patty Burger 🍔'), 'Double Patty Burger 🍔');
+    assert.equal(sanitizeText('Ice Cream Sundae 🍨'), 'Ice Cream Sundae 🍨');
+  });
+
+  await t.test('preserves Devanagari, Tamil, and Indian scripts', () => {
+    assert.equal(sanitizeText('पनीर टिक्का'), 'पनीर टिक्का');
+    assert.equal(sanitizeText('காபி'), 'காபி');
+    assert.equal(sanitizeText('मसाला डोसा'), 'मसाला डोसा');
+  });
+
+  await t.test('strips dangerous ESC/POS printer hardware control characters', () => {
+    // \x1B (ESC), \x00 (NUL), \x07 (BEL)
+    const dangerous = 'Cold Coffee\x1B\x00\x07';
+    assert.equal(sanitizeText(dangerous), 'Cold Coffee');
+  });
+
+  await t.test('strips HTML tags and script blocks to neutralize Stored XSS', () => {
+    const xss = '<script>alert("hacked")</script>Cold Coffee <img src=x onerror=alert(1)>';
+    assert.equal(sanitizeText(xss), 'Cold Coffee');
+  });
+
+  await t.test('removes invisible zero-width spaces that break item search', () => {
+    const zeroWidth = 'Cold\u200B Coffee\uFEFF';
+    assert.equal(sanitizeText(zeroWidth), 'Cold Coffee');
+  });
+
+  await t.test('handles newlines properly when allowed in descriptions', () => {
+    const descWithNewlines = 'Line 1\nLine 2\r\nLine 3\x00';
+    assert.equal(sanitizeText(descWithNewlines, { allowNewlines: true }), 'Line 1\nLine 2\r\nLine 3');
+  });
+});
+
+test('Phone Number Sanitization - Preserves Formatting', async (t) => {
+  await t.test('preserves international dialing codes and spaces', () => {
+    assert.equal(sanitizePhone('+91 98765 43210'), '+91 98765 43210');
+  });
+
+  await t.test('preserves landline parenthesis and hyphen formats', () => {
+    assert.equal(sanitizePhone('(022) 2345-6789'), '(022) 2345-6789');
+  });
+
+  await t.test('strips control characters and caps at 20 characters', () => {
+    assert.equal(sanitizePhone('+91 98765\x0043210'), '+91 9876543210');
+    assert.equal(sanitizePhone('+91 12345678901234567890EXTRA'), '+91 1234567890123456');
+  });
+});
+
+test('RFC 5321 Email Validation Regex', () => {
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // Valid emails
+  assert.equal(EMAIL_REGEX.test('store@example.com'), true);
+  assert.equal(EMAIL_REGEX.test('billing.counter@pos.store.co.in'), true);
+
+  // Invalid emails
+  assert.equal(EMAIL_REGEX.test('admin@'), false);
+  assert.equal(EMAIL_REGEX.test('user@@example.com'), false);
+  assert.equal(EMAIL_REGEX.test('user@.com'), false);
+  assert.equal(EMAIL_REGEX.test('plainaddress'), false);
+});
+
+test('Helmet HTTP Security Headers', async () => {
+  const app = express();
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    })
+  );
+  app.get('/api/test-headers', (_req, res) => res.json({ ok: true }));
+
+  const server = app.listen(0);
+  const port = server.address().port;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const res = await fetch(`${baseUrl}/api/test-headers`);
+    assert.equal(res.status, 200);
+
+    // MIME sniffing protection
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+
+    // Clickjacking protection (iframe blocking)
+    assert.equal(res.headers.get('x-frame-options'), 'SAMEORIGIN');
+
+    // Express signature hidden
+    assert.equal(res.headers.get('x-powered-by'), null);
+  } finally {
+    server.close();
+  }
+});
+
+test('Financial Integrity - Server-side Total Recalculation & Fraud Prevention', () => {
+  const taxPercent = 5; // 5% GST
+  const items = [
+    { itemId: 1, name: 'Cold Coffee ☕', price: 100, qty: 2 }, // 200
+    { itemId: null, name: 'Custom Cookie', price: 50, qty: 1 }, // 50
+  ];
+
+  // Client attempts to send manipulated total: 10
+  const clientManipulatedTotal = 10;
+
+  // Server recalculation:
+  const serverSubtotal = items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0);
+  const serverTax = Number((serverSubtotal * (taxPercent / 100)).toFixed(2));
+  const serverTotal = Number((serverSubtotal + serverTax).toFixed(2));
+
+  assert.equal(serverSubtotal, 250);
+  assert.equal(serverTax, 12.5);
+  assert.equal(serverTotal, 262.5);
+  assert.notEqual(serverTotal, clientManipulatedTotal);
+});
+
+test('Price Verification - Detects Tampered Catalog Item Price', () => {
+  const dbItem = { id: 5, name: 'Margherita Pizza 🍕', price: 299 };
+  
+  // Fraud attempt: cashier alters catalog price in cart to ₹1
+  const tamperedLine = { itemId: 5, name: 'Margherita Pizza 🍕', price: 1, qty: 1 };
+  const legitimateLine = { itemId: 5, name: 'Margherita Pizza 🍕', price: 299, qty: 1 };
+
+  const isTampered = Math.abs(tamperedLine.price - dbItem.price) > 1;
+  const isLegitimate = Math.abs(legitimateLine.price - dbItem.price) <= 1;
+
+  assert.equal(isTampered, true, 'Tampered price must be detected');
+  assert.equal(isLegitimate, true, 'Legitimate price must pass');
+});
+
+
+

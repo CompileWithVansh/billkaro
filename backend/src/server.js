@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import helmet from 'helmet';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -45,6 +46,15 @@ if (isProd && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16)) {
 // Behind a platform proxy (Render/Railway/Fly/Nginx) so secure cookies /
 // rate limiting / IPs work correctly.
 app.set('trust proxy', 1);
+
+// HTTP Security Headers (Safe Phase 1: CSP and COEP disabled to ensure
+// WebSockets, receipt canvas generation, and QR codes work without browser blocks)
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
 // Secure CORS configuration
 app.use(cors(getCorsOptions(isProd)));
