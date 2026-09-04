@@ -981,6 +981,9 @@ export default function PosPage() {
                     ↕️ Reorder All
                   </button>
                 )}
+
+                {/* Bottom scroll clearance spacer so categories like Noodles scroll freely above floating buttons */}
+                <div style={{ height: activeBill?.lines.length ? 100 : 30, flexShrink: 0 }} />
               </div>
 
               <div className="blinkit-content">
@@ -1043,7 +1046,10 @@ export default function PosPage() {
 
           {/* Sticky Mobile Floating Cart Bar */}
           {activeBill && activeBill.lines.length > 0 && (
-            <div className="mobile-floating-cart" onClick={() => setMobileView('cart')}>
+            <div
+              className={`mobile-floating-cart ${showCategorySidebar ? 'with-sidebar' : ''}`}
+              onClick={() => setMobileView('cart')}
+            >
               <div className="m-cart-info">
                 <span className="m-cart-count">🛒 {activeBill.lines.reduce((a, b) => a + b.qty, 0)} Items Selected</span>
                 <span className="m-cart-total">₹{total.toFixed(2)}</span>

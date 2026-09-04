@@ -894,6 +894,23 @@ select {
     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
   }
 
+  .mobile-floating-cart.with-sidebar {
+    left: max(84px, calc(84px + env(safe-area-inset-left, 0px)));
+    right: max(10px, calc(10px + env(safe-area-inset-right, 0px)));
+    padding: 8px 12px;
+    border-radius: 14px;
+  }
+  .mobile-floating-cart.with-sidebar .m-cart-count {
+    font-size: 11px;
+  }
+  .mobile-floating-cart.with-sidebar .m-cart-total {
+    font-size: 16px;
+  }
+  .mobile-floating-cart.with-sidebar .m-cart-pay-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
   .item-grid {
     grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
     gap: 10px;
@@ -1297,11 +1314,15 @@ select {
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 8px 5px;
+  padding-bottom: max(90px, calc(90px + env(safe-area-inset-bottom, 0px)));
   position: sticky;
   top: 0;
   height: calc(100vh - 160px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   max-height: calc(100dvh - 160px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
   scrollbar-width: thin;
   z-index: 10;
 }
@@ -1438,11 +1459,16 @@ select {
   .blinkit-sidebar {
     width: 76px;
     padding: 6px 3px;
+    padding-bottom: max(110px, calc(100px + env(safe-area-inset-bottom, 0px)));
     gap: 4px;
     top: 0;
     height: calc(100dvh - 140px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     max-height: calc(100dvh - 140px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     border-radius: 12px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
   }
   .blinkit-cat-item {
     padding: 7px 2px;
