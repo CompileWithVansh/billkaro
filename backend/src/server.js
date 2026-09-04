@@ -11,6 +11,8 @@ import { initDb } from './db.js';
 import authRoutes from './routes/authRoutes.js';
 import itemRoutes from './routes/itemRoutes.js';
 import billRoutes from './routes/billRoutes.js';
+import { getCorsOptions, getSocketCorsOptions } from './middleware/corsConfig.js';
+import { apiLimiter } from './middleware/rateLimiter.js';
 
 // Memoized DB initialization. Retries on failure so a sleeping/cold database
 // (e.g. Neon free tier waking up) doesn't permanently break the process.
@@ -44,25 +46,14 @@ if (isProd && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16)) {
 // rate limiting / IPs work correctly.
 app.set('trust proxy', 1);
 
-// CORS setup
-const origins = (process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-app.use(
-  cors({
-    origin: origins.length ? origins : true,
-  })
-);
+// Secure CORS configuration
+app.use(cors(getCorsOptions(isProd)));
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // ---------------- Socket.io for Real-time KDS ----------------
 const io = new Server(httpServer, {
-  cors: {
-    origin: origins.length ? origins : '*',
-  },
+  cors: getSocketCorsOptions(isProd),
 });
 app.set('io', io);
 
@@ -95,11 +86,20 @@ function getLocalNetworkIp() {
 }
 
 // ---------------- API ----------------
+// Health check is kept before the rate limiter so monitors are never throttled
 app.get('/api/health', (_req, res) =>
   res.json({ ok: true, service: 'billkaro', env: isProd ? 'production' : 'development' })
 );
 
+// General API rate limiter for DoS / scraping protection
+app.use('/api', apiLimiter);
+
 app.get('/api/info', (req, res) => {
+  // Hide internal network information in production
+  if (isProd) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  
   const localIp = getLocalNetworkIp();
   const host = req.get('host') || '';
   res.json({

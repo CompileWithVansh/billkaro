@@ -25,3 +25,6 @@ services:
       # Set this in the Render dashboard (kept secret, not committed).
       - key: DATABASE_URL
         sync: false
+      # Optional: Set if frontend is deployed to a separate domain.
+      - key: CORS_ORIGIN
+        sync: false

@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import { usersRepo } from '../db.js';
 import { signToken, requireAuth } from '../auth.js';
+import { loginLimiter, registerLimiter, kdsPairLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -26,6 +27,7 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 // POST /api/auth/kds-pair (Public endpoint for Kitchen Display pairing)
 router.post(
   '/kds-pair',
+  kdsPairLimiter,
   wrap(async (req, res) => {
     const { pin } = req.body || {};
     if (!pin) return res.status(400).json({ error: 'Pairing PIN is required' });
@@ -41,7 +43,7 @@ router.post(
   '/kds-reset-pin',
   requireAuth,
   wrap(async (req, res) => {
-    const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+    const newPin = Math.floor(100000 + Math.random() * 900000).toString();
     const user = await usersRepo.updateKdsPin(req.userId, newPin);
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ ok: true, kdsPin: user.kds_pin });
@@ -51,6 +53,7 @@ router.post(
 // POST /api/auth/register
 router.post(
   '/register',
+  registerLimiter,
   wrap(async (req, res) => {
     const { storeName, email, password, upiId, payeeName, taxPercent, address, phone } = req.body || {};
     if (!storeName || !email || !password) {
@@ -78,6 +81,7 @@ router.post(
 // POST /api/auth/login
 router.post(
   '/login',
+  loginLimiter,
   wrap(async (req, res) => {
     const { email, password } = req.body || {};
     if (!email || !password) {

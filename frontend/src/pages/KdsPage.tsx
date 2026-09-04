@@ -38,7 +38,7 @@ export default function KdsPage() {
   const navigate = useNavigate();
   const [tickets, setTickets] = useState<KdsTicket[]>([]);
 
-  // 4-Digit PIN pairing state
+  // 6-Digit PIN pairing state
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
   const [pairingBusy, setPairingBusy] = useState(false);
@@ -63,7 +63,7 @@ export default function KdsPage() {
   });
 
   async function handlePairWithPin() {
-    if (pinInput.length !== 4) return;
+    if (pinInput.length !== 6) return;
     setPinError('');
     setPairingBusy(true);
     try {
@@ -92,7 +92,7 @@ export default function KdsPage() {
       setPinInput('');
     } else if (key === '⌫') {
       setPinInput((prev) => prev.slice(0, -1));
-    } else if (pinInput.length < 4 && /^\d$/.test(key)) {
+    } else if (pinInput.length < 6 && /^\d$/.test(key)) {
       setPinInput((prev) => prev + key);
     }
   }
@@ -185,20 +185,20 @@ export default function KdsPage() {
     }
   }
 
-  // If unpaired, display the 4-Digit PIN Keypad Pairing View
+  // If unpaired, display the 6-Digit PIN Keypad Pairing View
   if (!pairedStoreId) {
     return (
       <div style={{ minHeight: '100vh', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
         <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 32, maxWidth: 420, width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6)' }}>
           <h2 style={{ margin: '0 0 8px', color: '#38bdf8' }}>🍳 Kitchen Display System</h2>
           <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: 20 }}>
-            Enter your Store's 4-digit KDS Pairing PIN shown on the POS cashier screen.
+            Enter your Store's 6-digit KDS Pairing PIN shown on the POS cashier screen.
           </p>
 
           {pinError && <div className="error-box" style={{ marginBottom: 16 }}>{pinError}</div>}
 
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 20 }}>
-            {[0, 1, 2, 3].map((idx) => (
+            {[0, 1, 2, 3, 4, 5].map((idx) => (
               <div
                 key={idx}
                 style={{
@@ -237,7 +237,7 @@ export default function KdsPage() {
           <button
             className="btn green block"
             style={{ minHeight: 48, fontSize: '1rem' }}
-            disabled={pinInput.length !== 4 || pairingBusy}
+            disabled={pinInput.length !== 6 || pairingBusy}
             onClick={handlePairWithPin}
           >
             {pairingBusy ? 'Verifying PIN…' : '🔑 Pair Kitchen Display'}

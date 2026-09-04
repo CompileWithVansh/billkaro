@@ -71,7 +71,7 @@ export default function ConnectKdsModal({ onClose }: Props) {
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480, textAlign: 'center' }}>
         <h3>📲 Connect Kitchen Display Screen</h3>
 
-        {/* 4-Digit PIN Card */}
+        {/* 6-Digit PIN Card */}
         <div
           style={{
             background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
@@ -85,10 +85,10 @@ export default function ConnectKdsModal({ onClose }: Props) {
             Kitchen Pairing PIN
           </div>
           <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#38bdf8', letterSpacing: 6, margin: '6px 0' }}>
-            {user?.kdsPin || '••••'}
+            {user?.kdsPin || '••••••'}
           </div>
           <div style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
-            Open <strong>/kds</strong> on any kitchen phone/tablet & enter this 4-digit PIN!
+            Open <strong>/kds</strong> on any kitchen phone/tablet & enter this 6-digit PIN!
           </div>
           <button
             type="button"

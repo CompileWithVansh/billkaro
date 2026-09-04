@@ -80,9 +80,9 @@ export async function initDb() {
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT NULL;
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_phone TEXT DEFAULT NULL;
 
-    -- Generate KDS pairing PIN for any existing users with NULL kds_pin
+    -- Generate KDS pairing PIN for any existing users with NULL kds_pin (6 digits)
     UPDATE billkaro_users 
-    SET kds_pin = LPAD(FLOOR(RANDOM() * 9000 + 1000)::TEXT, 4, '0')
+    SET kds_pin = LPAD(FLOOR(RANDOM() * 900000 + 100000)::TEXT, 6, '0')
     WHERE kds_pin IS NULL;
 
     CREATE TABLE IF NOT EXISTS billkaro_items (
@@ -141,7 +141,7 @@ export const usersRepo = {
     return rows[0] || null;
   },
   async create({ storeName, email, passwordHash, upiId, payeeName, taxPercent, address, phone }) {
-    const randomPin = Math.floor(1000 + Math.random() * 9000).toString();
+    const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
     const { rows } = await getPool().query(
       `INSERT INTO billkaro_users (store_name, email, password_hash, upi_id, payee_name, tax_percent, address, phone, kds_pin)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
