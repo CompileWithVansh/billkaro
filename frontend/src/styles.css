@@ -23,7 +23,11 @@ html,
 body,
 #root {
   height: 100%;
+  min-height: 100%;
+  min-height: -webkit-fill-available;
   margin: 0;
+  padding: 0;
+  background: var(--bg);
 }
 
 body {
@@ -186,18 +190,26 @@ select {
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
+  min-height: -webkit-fill-available;
+  overflow: hidden;
+  background: var(--bg);
 }
 
 .topbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
+  /* SAFE AREA FOR NOTCH, DYNAMIC ISLAND & IPAD 3-DOTS */
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-bottom: 10px;
   background: #0f172a;
   border-bottom: 1px solid var(--border);
   position: relative;
   z-index: 100;
   overflow: visible;
+  flex-shrink: 0;
 }
 .topbar-brand {
   display: flex;
@@ -272,7 +284,10 @@ select {
 /* Mobile Topbar Responsiveness (< 768px) */
 @media (max-width: 768px) {
   .topbar {
-    padding: 8px 10px;
+    padding-top: max(8px, env(safe-area-inset-top, 0px));
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+    padding-bottom: 8px;
     gap: 6px;
   }
   .topbar .logo {
@@ -339,10 +354,13 @@ select {
   align-items: stretch;
   gap: 6px;
   padding: 8px 12px 0;
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
   background: #0b1120;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
   scrollbar-width: none;
+  flex-shrink: 0;
 }
 .tabbar::-webkit-scrollbar {
   display: none;
@@ -395,8 +413,11 @@ select {
 
 .items-panel {
   padding: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-bottom: max(16px, calc(16px + env(safe-area-inset-bottom, 0px)));
   overflow-y: auto;
   background: var(--bg);
+  -webkit-overflow-scrolling: touch;
 }
 
 .items-toolbar {
@@ -633,7 +654,10 @@ select {
 .cart-footer {
   border-top: 1px solid var(--border);
   padding: 14px 16px;
+  padding-bottom: max(14px, calc(14px + env(safe-area-inset-bottom, 0px)));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   background: var(--panel-2);
+  flex-shrink: 0;
 }
 .totals-row {
   display: flex;
@@ -762,7 +786,10 @@ select {
     background: #0b1120;
     border-bottom: 1px solid var(--border);
     padding: 6px 10px;
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
     gap: 8px;
+    flex-shrink: 0;
   }
   .mobile-tab {
     flex: 1;
@@ -795,7 +822,7 @@ select {
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    padding-bottom: 90px;
+    padding-bottom: max(90px, calc(90px + env(safe-area-inset-bottom, 0px)));
   }
   .workspace.show-items-mobile .cart-panel {
     display: none !important;
@@ -832,9 +859,9 @@ select {
     align-items: center;
     justify-content: space-between;
     position: fixed;
-    bottom: 12px;
-    left: 12px;
-    right: 12px;
+    bottom: max(12px, calc(12px + env(safe-area-inset-bottom, 0px)));
+    left: max(12px, calc(12px + env(safe-area-inset-left, 0px)));
+    right: max(12px, calc(12px + env(safe-area-inset-right, 0px)));
     background: #1e293b;
     border: 1px solid #3b82f6;
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), 0 0 16px rgba(37, 99, 235, 0.35);
@@ -1272,8 +1299,8 @@ select {
   padding: 8px 5px;
   position: sticky;
   top: 0;
-  height: calc(100vh - 160px);
-  max-height: calc(100dvh - 160px);
+  height: calc(100vh - 160px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  max-height: calc(100dvh - 160px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   scrollbar-width: thin;
   z-index: 10;
@@ -1413,8 +1440,8 @@ select {
     padding: 6px 3px;
     gap: 4px;
     top: 0;
-    height: calc(100dvh - 140px);
-    max-height: calc(100dvh - 140px);
+    height: calc(100dvh - 140px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 140px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     border-radius: 12px;
   }
   .blinkit-cat-item {

@@ -248,7 +248,17 @@ export default function KdsPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f172a', color: '#f8fafc', padding: 24 }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#0f172a',
+        color: '#f8fafc',
+        paddingTop: 'max(24px, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(24px, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(24px, env(safe-area-inset-right, 0px))',
+      }}
+    >
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, borderBottom: '1px solid #1e293b', paddingBottom: 16 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '1.6rem', color: '#38bdf8' }}>🍳 Kitchen Display System (KDS)</h2>
