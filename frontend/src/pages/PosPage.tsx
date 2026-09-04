@@ -280,6 +280,25 @@ export default function PosPage() {
     setMenuOpen(false);
   }
 
+  async function handleForceRefresh() {
+    setMenuOpen(false);
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.update();
+        }
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch (e) {
+      console.warn('Force refresh cache wipe failed:', e);
+    }
+    window.location.reload();
+  }
+
   // Monitor Network Online/Offline status & sync pending bills on reconnect
   useEffect(() => {
     function handleOnline() {
@@ -839,6 +858,13 @@ export default function PosPage() {
                     onClick={toggleFullscreen}
                   >
                     {isFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen Mode'}
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={handleForceRefresh}
+                    style={{ color: '#38bdf8', fontWeight: 600 }}
+                  >
+                    🔄 Reload & Update App
                   </button>
                   <button
                     className="menu-dropdown-item"

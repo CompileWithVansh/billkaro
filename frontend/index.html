@@ -13,6 +13,16 @@
     <link rel="apple-touch-icon" href="/icon-512.png" />
     <link rel="icon" type="image/png" href="/icon-512.png" />
     <title>BillKaro POS</title>
+    <script>
+      (function() {
+        var isStandalone = ('standalone' in window.navigator && window.navigator.standalone) ||
+          window.matchMedia('(display-mode: standalone)').matches ||
+          window.matchMedia('(display-mode: fullscreen)').matches;
+        if (isStandalone) {
+          document.documentElement.classList.add('is-standalone-pwa');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
@@ -20,9 +30,29 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch((err) => {
+          navigator.serviceWorker.register('/sw.js').then((reg) => {
+            reg.update();
+          }).catch((err) => {
             console.log('SW registration failed:', err);
           });
+        });
+
+        // Automatically reload when a new service worker version activates
+        var refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          if (!refreshing) {
+            refreshing = true;
+            window.location.reload();
+          }
+        });
+
+        // Check for updates whenever user returns to the app from the background
+        document.addEventListener('visibilitychange', function() {
+          if (document.visibilityState === 'visible') {
+            navigator.serviceWorker.getRegistration().then(function(reg) {
+              if (reg) reg.update();
+            });
+          }
         });
       }
     </script>
