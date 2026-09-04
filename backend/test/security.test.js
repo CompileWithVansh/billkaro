@@ -349,5 +349,7 @@ test('Price Verification - Detects Tampered Catalog Item Price', () => {
   assert.equal(isLegitimate, true, 'Legitimate price must pass');
 });
 
-
-
+test('KDS Ticket Management - Exports Status Updater Function', async () => {
+  const { updateActiveKdsStatus } = await import('../src/routes/billRoutes.js');
+  assert.equal(typeof updateActiveKdsStatus, 'function');
+});

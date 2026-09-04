@@ -9,6 +9,16 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 // Active in-memory KDS tickets store per store ID
 const activeKdsQueue = new Map();
 
+export function updateActiveKdsStatus(storeId, ticketId, status) {
+  const existing = activeKdsQueue.get(String(storeId)) || [];
+  const t = existing.find((x) => String(x.id) === String(ticketId));
+  if (t) {
+    t.status = status;
+    return t;
+  }
+  return null;
+}
+
 // Public KDS orders endpoint for paired kitchen screens (Only active kitchen tickets)
 router.get(
   '/kds/orders',
@@ -39,12 +49,14 @@ router.use(requireAuth);
 router.post(
   '/kds/send',
   wrap(async (req, res) => {
-    const { label, items } = req.body || {};
+    const { label, items, invoiceNumber, customerName } = req.body || {};
     if (!Array.isArray(items) || items.length === 0 || items.length > 200) {
       return res.status(400).json({ error: 'Cart items required (max 200 items)' });
     }
     const storeId = String(req.userId);
     const cleanLabel = sanitizeText(label) || 'Kitchen Ticket';
+    const cleanInvoiceNumber = invoiceNumber ? sanitizeText(invoiceNumber) : null;
+    const cleanCustomerName = customerName ? sanitizeText(customerName) : null;
     const orderTicket = {
       id: 'KDS-' + Date.now().toString().slice(-4),
       label: cleanLabel,
@@ -52,6 +64,8 @@ router.post(
       total: items.reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.qty) || 1), 0),
       createdAt: new Date().toISOString(),
       status: 'preparing',
+      invoiceNumber: cleanInvoiceNumber,
+      customerName: cleanCustomerName,
     };
 
     // Store in active in-memory KDS queue for this store
@@ -166,6 +180,34 @@ router.post(
 
     // Auto-deduct stock for sold items
     await itemsRepo.deductStock(userId, items);
+
+    // Format invoice number and auto-link to matching active KDS kitchen ticket
+    const invNumber = 'INV-' + String(bill.id).padStart(4, '0');
+    const storeId = String(userId);
+    const existingKds = activeKdsQueue.get(storeId) || [];
+    const updatedTickets = [];
+    for (const t of existingKds) {
+      const matchesLabel = (t.label || '').trim().toLowerCase() === cleanLabel.trim().toLowerCase();
+      if (matchesLabel && !t.invoiceNumber) {
+        t.invoiceNumber = invNumber;
+        if (cleanCustomerName) t.customerName = cleanCustomerName;
+        updatedTickets.push(t);
+      }
+    }
+    if (updatedTickets.length > 0) {
+      const io = req.app.get('io');
+      if (io) {
+        for (const ut of updatedTickets) {
+          io.to(`store_${storeId}`).emit('kds:order-updated', {
+            orderId: ut.id,
+            label: ut.label,
+            status: ut.status,
+            invoiceNumber: ut.invoiceNumber,
+            customerName: ut.customerName,
+          });
+        }
+      }
+    }
 
     // Cache the created bill for deduplication
     const billRecord = { id: bill.id, bill, timestamp: now };

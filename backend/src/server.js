@@ -11,7 +11,7 @@ import { existsSync } from 'fs';
 import { initDb } from './db.js';
 import authRoutes from './routes/authRoutes.js';
 import itemRoutes from './routes/itemRoutes.js';
-import billRoutes from './routes/billRoutes.js';
+import billRoutes, { updateActiveKdsStatus } from './routes/billRoutes.js';
 import { getCorsOptions, getSocketCorsOptions } from './middleware/corsConfig.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 
@@ -76,7 +76,14 @@ io.on('connection', (socket) => {
 
   socket.on('kds:update-status', ({ userId, orderId, label, status }) => {
     if (userId && orderId) {
-      io.to(`store_${userId}`).emit('kds:order-updated', { orderId, label, status });
+      const updated = updateActiveKdsStatus(userId, orderId, status);
+      io.to(`store_${userId}`).emit('kds:order-updated', {
+        orderId,
+        label,
+        status,
+        invoiceNumber: updated?.invoiceNumber,
+        customerName: updated?.customerName,
+      });
     }
   });
 });

@@ -727,9 +727,12 @@ export default function PosPage() {
   async function handleSendToKitchen() {
     if (activeBill.lines.length === 0) return;
     try {
+      const invNum = activeBill.savedBillId ? formatInvoiceNumber(activeBill.savedBillId) : undefined;
       await api.post('/bills/kds/send', {
         label: activeBill.label,
         items: activeBill.lines,
+        invoiceNumber: invNum,
+        customerName: currentReceiptDetails?.customerName || undefined,
       });
       setKdsSentToast(true);
       setTimeout(() => setKdsSentToast(false), 3000);

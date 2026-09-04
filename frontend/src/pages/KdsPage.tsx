@@ -12,6 +12,8 @@ interface KdsTicket {
   paymentMethod?: string;
   createdAt: string;
   status: 'new' | 'preparing' | 'ready';
+  invoiceNumber?: string | null;
+  customerName?: string | null;
 }
 
 function playAudioChime() {
@@ -119,7 +121,9 @@ export default function KdsPage() {
             total: b.total,
             paymentMethod: b.paymentMethod,
             createdAt: b.createdAt,
-            status: 'preparing',
+            status: b.status || 'preparing',
+            invoiceNumber: b.invoiceNumber || null,
+            customerName: b.customerName || null,
           }));
           setTickets(loaded);
         }
@@ -149,12 +153,12 @@ export default function KdsPage() {
 
     socket.on('kds:new-order', (ticket: KdsTicket) => {
       playAudioChime();
-      setTickets((prev) => [ticket, ...prev]);
+      setTickets((prev) => [ticket, ...prev.filter((t) => t.id !== ticket.id)]);
     });
 
-    socket.on('kds:order-updated', ({ orderId, status }: { orderId: string | number; status: 'preparing' | 'ready' }) => {
+    socket.on('kds:order-updated', (data: { orderId: string | number; status?: 'preparing' | 'ready'; invoiceNumber?: string; customerName?: string }) => {
       setTickets((prev) =>
-        prev.map((t) => (t.id === orderId ? { ...t, status } : t))
+        prev.map((t) => (t.id === data.orderId ? { ...t, ...data } : t))
       );
     });
 
@@ -294,21 +298,88 @@ export default function KdsPage() {
               }}
             >
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: 10, marginBottom: 12 }}>
-                  <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#f1f5f9' }}>{t.label || 'Order'}</span>
-                  <span
-                    style={{
-                      fontSize: '0.75rem',
-                      padding: '2px 8px',
-                      borderRadius: 12,
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      background: t.status === 'ready' ? '#166534' : t.status === 'preparing' ? '#854d0e' : '#1e40af',
-                      color: t.status === 'ready' ? '#86efac' : t.status === 'preparing' ? '#fef08a' : '#bfdbfe',
-                    }}
-                  >
-                    {t.status}
-                  </span>
+                <div style={{ borderBottom: '1px solid #334155', paddingBottom: 10, marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.3px' }}>
+                      {t.label || 'Order'}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        padding: '3px 10px',
+                        borderRadius: 12,
+                        fontWeight: 800,
+                        letterSpacing: '0.5px',
+                        textTransform: 'uppercase',
+                        background: t.status === 'ready' ? 'rgba(34, 197, 94, 0.2)' : t.status === 'preparing' ? 'rgba(234, 179, 8, 0.2)' : 'rgba(59, 130, 246, 0.2)',
+                        color: t.status === 'ready' ? '#4ade80' : t.status === 'preparing' ? '#fde047' : '#93c5fd',
+                        border: t.status === 'ready' ? '1px solid #22c55e' : t.status === 'preparing' ? '1px solid #eab308' : '1px solid #3b82f6',
+                      }}
+                    >
+                      {t.status === 'ready' ? '● READY' : t.status === 'preparing' ? '⏳ PREPARING' : '⚡ NEW'}
+                    </span>
+                  </div>
+
+                  {/* Invoice / Ticket Identification & Customer Name Row */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+                    {t.invoiceNumber ? (
+                      <span
+                        style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: 6,
+                          background: '#0284c7',
+                          color: '#ffffff',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
+                        }}
+                        title={`Billed Invoice: ${t.invoiceNumber}`}
+                      >
+                        🧾 {t.invoiceNumber}
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          background: 'rgba(51, 65, 85, 0.7)',
+                          color: '#94a3b8',
+                          border: '1px dashed #475569',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                        title="Dine-in Order sent to kitchen before payment"
+                      >
+                        🎫 #{String(t.id).replace('KDS-', '')} (Unbilled)
+                      </span>
+                    )}
+
+                    {t.customerName && (
+                      <span
+                        style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                          color: '#cbd5e1',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          maxWidth: 150,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={`Customer: ${t.customerName}`}
+                      >
+                        👤 {t.customerName}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
