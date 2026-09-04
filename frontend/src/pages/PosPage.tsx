@@ -144,6 +144,7 @@ export default function PosPage() {
   const [customOpen, setCustomOpen] = useState(false);
   const [qtyEditLine, setQtyEditLine] = useState<CartLine | null>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
+  const isSubmittingBillRef = useRef(false);
   const [currentReceiptDetails, setCurrentReceiptDetails] = useState<{
     paymentMethod: string;
     customerName?: string;
@@ -549,143 +550,158 @@ export default function PosPage() {
     status: 'paid' | 'unpaid';
     action: 'save' | 'whatsapp' | 'print';
   }) {
-    setCurrentReceiptDetails({
-      paymentMethod: details.paymentMethod,
-      customerName: details.customerName,
-      customerPhone: details.customerPhone,
-    });
-
-    const payload = {
-      label: activeBill.label,
-      items: activeBill.lines,
-      subtotal,
-      tax,
-      total,
-      paymentMethod: details.paymentMethod,
-      customerName: details.customerName,
-      customerPhone: details.customerPhone,
-      status: details.status,
-    };
-
-    let savedBillId = activeBill.savedBillId;
-
-    if (navigator.onLine) {
-      try {
-        if (savedBillId && details.action === 'save') {
-          await api.put(`/bills/${savedBillId}/status`, {
-            status: 'paid',
-            paymentMethod: details.paymentMethod,
-          });
-        } else {
-          const res = await api.post('/bills', {
-            ...payload,
-            status: details.status,
-          });
-          savedBillId = res.data?.id || res.data?.bill?.id;
-          fetchItems();
-        }
-      } catch (err) {
-        console.warn('Network error saving bill, queuing offline:', err);
-        const queued = await queueOfflineBill(payload);
-        savedBillId = (queued as any)?.tempId;
-        alert('⚡ Saved offline! Bill will auto-sync when network is stable.');
-      }
-    } else {
-      const queued = await queueOfflineBill(payload);
-      savedBillId = (queued as any)?.tempId;
-      alert('⚡ Offline Mode: Bill saved locally! Will sync automatically when back online.');
+    // Prevent multiple rapid clicks from triggering duplicate bill creation
+    if (isSubmittingBillRef.current) {
+      console.warn('[Checkout] Submission already in progress, blocking duplicate tap.');
+      return;
     }
+    isSubmittingBillRef.current = true;
 
-    const invNumber = savedBillId ? formatInvoiceNumber(savedBillId) : (activeBill.savedBillId ? formatInvoiceNumber(activeBill.savedBillId) : 'INV-0001');
+    try {
+      setCurrentReceiptDetails({
+        paymentMethod: details.paymentMethod,
+        customerName: details.customerName,
+        customerPhone: details.customerPhone,
+      });
 
-    updateActiveBill((b) => ({
-      ...b,
-      savedBillId,
-      billShared: details.action === 'whatsapp' ? true : b.billShared,
-    }));
+      // Generate a unique clientBillId token to guarantee idempotency on the server
+      const clientBillId = activeBill.savedBillId || `bill_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    setCurrentReceiptDetails({
-      paymentMethod: details.paymentMethod,
-      customerName: details.customerName,
-      customerPhone: details.customerPhone,
-      invoiceNumber: invNumber,
-    });
-
-    if (details.action === 'print' && details.paymentMethod !== 'udhaar' && user) {
-      printBill({
-        bill: { ...activeBill, label: `Bill No: ${invNumber}` },
-        user,
-        items,
+      const payload = {
+        label: activeBill.label,
+        items: activeBill.lines,
         subtotal,
         tax,
         total,
-      });
-    } else if (details.action === 'whatsapp') {
-      const itemsList = activeBill.lines
-        .map((l) => {
-          const catalogItem = items.find((i) => i.id === l.itemId);
-          const desc = getItemDesc(l) || (catalogItem ? getItemDesc(catalogItem) : '');
-          return `• *${l.name}*${desc ? ` (${desc})` : ''} x${l.qty} — ₹${(l.price * l.qty).toFixed(2)}`;
-        })
-        .join('\n');
-
-      const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill No: *${invNumber}*${activeBill.label ? ` (Table: ${activeBill.label})` : ''}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${tax > 0 ? `\nTax (${user?.taxPercent || 0}%): ₹${tax.toFixed(2)}` : ''}\n*Total Amount: ₹${total.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `AWAITING PAYMENT / via ${(details.paymentMethod || 'UPI').toUpperCase()}`}\n----------------------------------\n\nScan QR Code on Receipt image to Pay via GPay/PhonePe/Paytm!\nThank you for visiting us!`;
-
-      // Microtick to ensure ReceiptCard receives invoiceNumber before snapshot
-      await new Promise((r) => setTimeout(r, 120));
-
-      const sendWhatsAppText = () => {
-        if (details.customerPhone && details.customerPhone.trim()) {
-          const cleanPhone = details.customerPhone.replace(/\D/g, '');
-          const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-          window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(textMessage)}`, '_blank');
-        } else {
-          window.open(`https://wa.me/?text=${encodeURIComponent(textMessage)}`, '_blank');
-        }
+        paymentMethod: details.paymentMethod,
+        customerName: details.customerName,
+        customerPhone: details.customerPhone,
+        status: details.status,
+        clientBillId,
       };
 
-      try {
-        if (receiptRef.current) {
-          const blob = await toBlob(receiptRef.current, { pixelRatio: 2 });
-          if (blob) {
-            const file = new File([blob], `${invNumber}_${activeBill.label.replace(/\s+/g, '_')}.png`, { type: 'image/png' });
-            
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-              await navigator.share({
-                title: `BillKaro Receipt - ${invNumber}`,
-                text: `Receipt from ${user?.storeName || 'BillKaro'} (Total: ₹${total.toFixed(2)})`,
-                files: [file],
-              });
-            } else {
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${invNumber}_Receipt.png`;
-              a.click();
-              URL.revokeObjectURL(url);
+      let savedBillId = activeBill.savedBillId;
 
+      if (navigator.onLine) {
+        try {
+          if (savedBillId && details.action === 'save') {
+            await api.put(`/bills/${savedBillId}/status`, {
+              status: 'paid',
+              paymentMethod: details.paymentMethod,
+            });
+          } else {
+            const res = await api.post('/bills', {
+              ...payload,
+              status: details.status,
+            });
+            savedBillId = res.data?.id || res.data?.bill?.id;
+            fetchItems();
+          }
+        } catch (err) {
+          console.warn('Network error saving bill, queuing offline:', err);
+          const queued = await queueOfflineBill(payload);
+          savedBillId = (queued as any)?.tempId;
+          alert('⚡ Saved offline! Bill will auto-sync when network is stable.');
+        }
+      } else {
+        const queued = await queueOfflineBill(payload);
+        savedBillId = (queued as any)?.tempId;
+        alert('⚡ Offline Mode: Bill saved locally! Will sync automatically when back online.');
+      }
+
+      const invNumber = savedBillId ? formatInvoiceNumber(savedBillId) : (activeBill.savedBillId ? formatInvoiceNumber(activeBill.savedBillId) : 'INV-0001');
+
+      updateActiveBill((b) => ({
+        ...b,
+        savedBillId,
+        billShared: details.action === 'whatsapp' ? true : b.billShared,
+      }));
+
+      setCurrentReceiptDetails({
+        paymentMethod: details.paymentMethod,
+        customerName: details.customerName,
+        customerPhone: details.customerPhone,
+        invoiceNumber: invNumber,
+      });
+
+      if (details.action === 'print' && details.paymentMethod !== 'udhaar' && user) {
+        printBill({
+          bill: { ...activeBill, label: `Bill No: ${invNumber}` },
+          user,
+          items,
+          subtotal,
+          tax,
+          total,
+        });
+      } else if (details.action === 'whatsapp') {
+        const itemsList = activeBill.lines
+          .map((l) => {
+            const catalogItem = items.find((i) => i.id === l.itemId);
+            const desc = getItemDesc(l) || (catalogItem ? getItemDesc(catalogItem) : '');
+            return `• *${l.name}*${desc ? ` (${desc})` : ''} x${l.qty} — ₹${(l.price * l.qty).toFixed(2)}`;
+          })
+          .join('\n');
+
+        const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill No: *${invNumber}*${activeBill.label ? ` (Table: ${activeBill.label})` : ''}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${tax > 0 ? `\nTax (${user?.taxPercent || 0}%): ₹${tax.toFixed(2)}` : ''}\n*Total Amount: ₹${total.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `AWAITING PAYMENT / via ${(details.paymentMethod || 'UPI').toUpperCase()}`}\n----------------------------------\n\nScan QR Code on Receipt image to Pay via GPay/PhonePe/Paytm!\nThank you for visiting us!`;
+
+        // Microtick to ensure ReceiptCard receives invoiceNumber before snapshot
+        await new Promise((r) => setTimeout(r, 120));
+
+        const sendWhatsAppText = () => {
+          if (details.customerPhone && details.customerPhone.trim()) {
+            const cleanPhone = details.customerPhone.replace(/\D/g, '');
+            const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+            window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(textMessage)}`, '_blank');
+          } else {
+            window.open(`https://wa.me/?text=${encodeURIComponent(textMessage)}`, '_blank');
+          }
+        };
+
+        try {
+          if (receiptRef.current) {
+            const blob = await toBlob(receiptRef.current, { pixelRatio: 2 });
+            if (blob) {
+              const file = new File([blob], `${invNumber}_${activeBill.label.replace(/\s+/g, '_')}.png`, { type: 'image/png' });
+              
+              if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                  title: `BillKaro Receipt - ${invNumber}`,
+                  text: `Receipt from ${user?.storeName || 'BillKaro'} (Total: ₹${total.toFixed(2)})`,
+                  files: [file],
+                });
+              } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${invNumber}_Receipt.png`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                sendWhatsAppText();
+              }
+            } else {
               sendWhatsAppText();
             }
           } else {
             sendWhatsAppText();
           }
-        } else {
+        } catch (err) {
+          console.warn('Failed to generate image receipt:', err);
           sendWhatsAppText();
         }
-      } catch (err) {
-        console.warn('Failed to generate image receipt:', err);
-        sendWhatsAppText();
       }
-    }
 
-    if (details.action === 'save') {
-      clearActiveBill();
-      setShowPayment(false);
-    } else if (details.action === 'whatsapp') {
-      setShowPayment(false);
-      alert(`📲 Receipt shared for Bill No: ${invNumber}! Table "${activeBill.label}" remains open on screen until payment is received.`);
-    } else {
-      setShowPayment(false);
+      if (details.action === 'save') {
+        clearActiveBill();
+        setShowPayment(false);
+      } else if (details.action === 'whatsapp') {
+        setShowPayment(false);
+        alert(`📲 Receipt shared for Bill No: ${invNumber}! Table "${activeBill.label}" remains open on screen until payment is received.`);
+      } else {
+        setShowPayment(false);
+      }
+    } finally {
+      isSubmittingBillRef.current = false;
     }
   }
 

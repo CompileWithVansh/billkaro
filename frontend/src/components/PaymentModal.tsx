@@ -13,7 +13,7 @@ interface Props {
     customerPhone?: string;
     status: 'paid' | 'unpaid';
     action: 'save' | 'whatsapp' | 'print';
-  }) => void;
+  }) => Promise<void> | void;
 }
 
 function buildUpiLink(upiId: string, payeeName: string, amount: number) {
@@ -40,6 +40,7 @@ export default function PaymentModal({
   const [customerPhone, setCustomerPhone] = useState('');
   const [dataUrl, setDataUrl] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (method !== 'upi') return;
@@ -54,32 +55,33 @@ export default function PaymentModal({
       .catch(() => setError('Could not generate QR code.'));
   }, [amount, upiId, payeeName, storeName, method]);
 
-  function handleComplete(action: 'save' | 'whatsapp' | 'print' = 'save') {
+  async function handleComplete(action: 'save' | 'whatsapp' | 'print' = 'save') {
+    if (isSubmitting) return;
+
     if (method === 'udhaar') {
       if (!customerName.trim()) {
         setError('Please enter Customer Name for Udhaar credit.');
         return;
       }
-      onConfirmPayment({
-        paymentMethod: 'udhaar',
-        customerName: customerName.trim(),
-        customerPhone: customerPhone.trim(),
-        status: 'unpaid',
-        action,
-      });
-    } else {
-      onConfirmPayment({
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onConfirmPayment({
         paymentMethod: method,
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
-        status: action === 'whatsapp' ? 'unpaid' : 'paid',
+        status: method === 'udhaar' || action === 'whatsapp' ? 'unpaid' : 'paid',
         action,
       });
+    } catch (err) {
+      console.error('Payment processing failed:', err);
+      setIsSubmitting(false);
     }
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={isSubmitting ? undefined : onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Complete Payment</h3>
         <div className="qr-amount">₹{amount.toFixed(2)}</div>
@@ -88,7 +90,8 @@ export default function PaymentModal({
           <button
             type="button"
             className={`btn ${method === 'upi' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1 }}
+            style={{ flex: 1, opacity: isSubmitting ? 0.6 : 1 }}
+            disabled={isSubmitting}
             onClick={() => setMethod('upi')}
           >
             📱 UPI QR
@@ -96,7 +99,8 @@ export default function PaymentModal({
           <button
             type="button"
             className={`btn ${method === 'cash' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1 }}
+            style={{ flex: 1, opacity: isSubmitting ? 0.6 : 1 }}
+            disabled={isSubmitting}
             onClick={() => setMethod('cash')}
           >
             💵 Cash
@@ -104,7 +108,8 @@ export default function PaymentModal({
           <button
             type="button"
             className={`btn ${method === 'udhaar' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1 }}
+            style={{ flex: 1, opacity: isSubmitting ? 0.6 : 1 }}
+            disabled={isSubmitting}
             onClick={() => setMethod('udhaar')}
           >
             📋 Udhaar
@@ -142,6 +147,7 @@ export default function PaymentModal({
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="e.g. Ramesh Kumar"
+                disabled={isSubmitting}
                 autoFocus
               />
             </div>
@@ -151,6 +157,7 @@ export default function PaymentModal({
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 placeholder="e.g. 9876543210"
+                disabled={isSubmitting}
               />
             </div>
             {error && <div className="error-box">{error}</div>}
@@ -162,10 +169,30 @@ export default function PaymentModal({
           <button
             type="button"
             className="btn green block"
-            style={{ fontSize: '1.05rem', minHeight: '48px', fontWeight: 700 }}
+            style={{
+              fontSize: '1.05rem',
+              minHeight: '48px',
+              fontWeight: 700,
+              opacity: isSubmitting ? 0.8 : 1,
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+            }}
+            disabled={isSubmitting}
             onClick={() => handleComplete('save')}
           >
-            {method === 'udhaar' ? '📋 Save as Udhaar (Close Tab)' : '✅ Paid & Close Tab'}
+            {isSubmitting ? (
+              <>
+                <span className="spinner-inline" />
+                <span>Saving Bill & Invoice…</span>
+              </>
+            ) : method === 'udhaar' ? (
+              '📋 Save as Udhaar (Close Tab)'
+            ) : (
+              '✅ Paid & Close Tab'
+            )}
           </button>
 
           {/* Secondary Action Buttons */}
@@ -173,7 +200,15 @@ export default function PaymentModal({
             <button
               type="button"
               className="btn ghost"
-              style={{ flex: 1.2, fontSize: '0.85rem', color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.4)' }}
+              style={{
+                flex: 1.2,
+                fontSize: '0.85rem',
+                color: '#22c55e',
+                borderColor: 'rgba(34, 197, 94, 0.4)',
+                opacity: isSubmitting ? 0.5 : 1,
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              }}
+              disabled={isSubmitting}
               onClick={() => handleComplete('whatsapp')}
               title="Share bill & QR on WhatsApp without closing the tab"
             >
@@ -182,7 +217,13 @@ export default function PaymentModal({
             <button
               type="button"
               className="btn ghost"
-              style={{ flex: 0.8, fontSize: '0.85rem' }}
+              style={{
+                flex: 0.8,
+                fontSize: '0.85rem',
+                opacity: isSubmitting ? 0.5 : 1,
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              }}
+              disabled={isSubmitting}
               onClick={() => handleComplete('print')}
             >
               🖨️ Print
@@ -192,7 +233,13 @@ export default function PaymentModal({
           <button
             type="button"
             className="btn ghost block"
-            style={{ marginTop: 4, opacity: 0.6, fontSize: '0.85rem' }}
+            style={{
+              marginTop: 4,
+              opacity: isSubmitting ? 0.4 : 0.6,
+              fontSize: '0.85rem',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            }}
+            disabled={isSubmitting}
             onClick={onClose}
           >
             Cancel

@@ -64,15 +64,50 @@ router.post(
   })
 );
 
+// In-memory deduplication cache to prevent duplicate bill creation from accidental double-taps or network retries
+const recentBillsMap = new Map(); // key -> { id, bill, timestamp }
+
+// Periodic cleanup of stale deduplication cache entries every 60 seconds
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of recentBillsMap.entries()) {
+    if (now - val.timestamp > 60000) {
+      recentBillsMap.delete(key);
+    }
+  }
+}, 60000).unref();
+
 // POST /api/bills (Payment checkout — strictly saves to database for history/reports; does NOT send to KDS)
 router.post(
   '/',
   wrap(async (req, res) => {
-    const { label, items, subtotal, tax, total, paymentMethod, customerName, customerPhone, status } = req.body || {};
+    const { label, items, subtotal, tax, total, paymentMethod, customerName, customerPhone, status, clientBillId } = req.body || {};
     if (!Array.isArray(items)) {
       return res.status(400).json({ error: 'items must be an array' });
     }
-    const bill = await billsRepo.create(req.userId, {
+
+    const userId = Number(req.userId);
+    const now = Date.now();
+
+    // 1. Check clientBillId if provided by frontend
+    if (clientBillId) {
+      const clientKey = `client_${userId}_${clientBillId}`;
+      const existing = recentBillsMap.get(clientKey);
+      if (existing) {
+        console.log(`[Dedupe] Prevented duplicate bill via clientBillId: ${clientBillId}`);
+        return res.status(200).json({ id: existing.id, bill: existing.bill, deduplicated: true });
+      }
+    }
+
+    // 2. Rapid double-tap safeguard: check if identical order fingerprint was created in last 4 seconds
+    const fingerprintKey = `fp_${userId}_${Number(total).toFixed(2)}_${items.length}_${items.map((i) => `${i.itemId || i.id}:${i.qty}`).sort().join(',')}`;
+    const recentFp = recentBillsMap.get(fingerprintKey);
+    if (recentFp && (now - recentFp.timestamp < 4000)) {
+      console.log(`[Dedupe] Prevented rapid double-tap duplicate bill within 4s for user ${userId}`);
+      return res.status(200).json({ id: recentFp.id, bill: recentFp.bill, deduplicated: true });
+    }
+
+    const bill = await billsRepo.create(userId, {
       label,
       items,
       subtotal,
@@ -85,7 +120,14 @@ router.post(
     });
 
     // Auto-deduct stock for sold items
-    await itemsRepo.deductStock(req.userId, items);
+    await itemsRepo.deductStock(userId, items);
+
+    // Cache the created bill for deduplication
+    const billRecord = { id: bill.id, bill, timestamp: now };
+    if (clientBillId) {
+      recentBillsMap.set(`client_${userId}_${clientBillId}`, billRecord);
+    }
+    recentBillsMap.set(fingerprintKey, billRecord);
 
     res.status(201).json({ id: bill.id, bill });
   })
