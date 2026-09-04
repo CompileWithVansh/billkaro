@@ -1205,6 +1205,7 @@ export default function PosPage() {
         <ItemEditorModal
           initial={editorItem}
           suggestedColor={nextItemColor(items.map((i) => i.color))}
+          existingCategories={categories}
           onClose={() => setShowEditor(false)}
           onSave={saveItem}
           onDelete={editorItem ? deleteItem : undefined}
