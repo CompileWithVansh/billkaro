@@ -72,11 +72,12 @@ router.post(
     const cleanInvoiceNumber = invoiceNumber ? sanitizeText(invoiceNumber) : null;
     const cleanCustomerName = customerName ? sanitizeText(customerName) : null;
 
-    // Sanitize item names and categories to prevent Stored XSS or hardware exploit characters on tickets
+    // Sanitize item names, categories, and portion descriptions to prevent Stored XSS
     const cleanItems = items.map((l) => ({
       ...l,
       name: sanitizeText(l.name) || 'Item',
       category: l.category ? sanitizeText(l.category) : undefined,
+      description: l.description ? sanitizeText(l.description) : undefined,
       price: Number(l.price) || 0,
       qty: Number(l.qty) || 1,
     }));
@@ -195,11 +196,12 @@ router.post(
 
     const userId = Number(req.userId);
 
-    // Sanitize item names and categories to prevent Stored XSS
+    // Sanitize item names, categories, and portion descriptions to prevent Stored XSS
     const cleanItems = items.map((l) => ({
       ...l,
       name: sanitizeText(l.name) || 'Item',
       category: l.category ? sanitizeText(l.category) : undefined,
+      description: l.description ? sanitizeText(l.description) : undefined,
       price: typeof l.price === 'number' ? l.price : Number(l.price) || 0,
       qty: typeof l.qty === 'number' ? l.qty : Number(l.qty) || 1,
     }));

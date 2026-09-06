@@ -464,7 +464,7 @@ export default function PosPage() {
                 ...l,
                 qty: l.qty + 1,
                 category: l.category || item.category,
-                description: l.description || item.description || item.category,
+                description: l.description || item.description || undefined,
               }
             : l
         );
@@ -478,7 +478,7 @@ export default function PosPage() {
             price: item.price,
             qty: 1,
             category: item.category,
-            description: item.description || item.category,
+            description: item.description || undefined,
           },
         ];
       }

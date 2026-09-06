@@ -8,7 +8,7 @@ import { api, getToken, setKdsToken } from '../api';
 interface KdsTicket {
   id: string | number;
   label: string;
-  items: Array<{ name: string; qty: number; category?: string }>;
+  items: Array<{ name: string; qty: number; category?: string; description?: string }>;
   total: number;
   paymentMethod?: string;
   createdAt: string;
@@ -418,13 +418,39 @@ export default function KdsPage() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                  {t.items.map((line, idx) => (
-                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', fontWeight: 500 }}>
-                      <span>{line.name}</span>
-                      <span style={{ color: '#38bdf8', fontWeight: 700 }}>x{line.qty}</span>
-                    </div>
-                  ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                  {t.items.map((line, idx) => {
+                    const isNew = (line as any).isNew;
+                    const isUpdated = (line as any).isUpdated;
+                    const newQty = (line as any).newQty;
+                    return (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: '1.05rem', fontWeight: 500 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>{line.name}</span>
+                            {isNew && (
+                              <span style={{ fontSize: '0.68rem', background: '#f59e0b', color: '#000', padding: '1px 6px', borderRadius: 4, fontWeight: 800 }}>
+                                +NEW
+                              </span>
+                            )}
+                            {isUpdated && (
+                              <span style={{ fontSize: '0.68rem', background: '#38bdf8', color: '#000', padding: '1px 6px', borderRadius: 4, fontWeight: 800 }}>
+                                +{newQty} MORE
+                              </span>
+                            )}
+                          </div>
+                          {line.description &&
+                            line.description.trim() &&
+                            line.description.trim().toLowerCase() !== (line.category || '').trim().toLowerCase() && (
+                              <span style={{ fontSize: '0.84rem', color: '#fde68a', fontWeight: 500, marginTop: 2 }}>
+                                📝 {line.description}
+                              </span>
+                            )}
+                        </div>
+                        <span style={{ color: isNew ? '#f59e0b' : '#38bdf8', fontWeight: 700, marginLeft: 12 }}>x{line.qty}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

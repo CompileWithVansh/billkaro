@@ -6,7 +6,7 @@ import type { User } from '../types';
 interface KdsTicket {
   id: string | number;
   label: string;
-  items: Array<{ name: string; qty: number; category?: string }>;
+  items: Array<{ name: string; qty: number; category?: string; description?: string }>;
   total: number;
   paymentMethod?: string;
   createdAt: string;
@@ -286,20 +286,29 @@ export default function KitchenTab({ user }: Props) {
                               fontSize: '0.92rem',
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontWeight: 600, color: '#f8fafc' }}>
-                                {item.name}
-                              </span>
-                              {isNew && (
-                                <span style={{ fontSize: '0.68rem', background: '#f59e0b', color: '#000', padding: '1px 6px', borderRadius: 4, fontWeight: 800 }}>
-                                  +NEW
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontWeight: 600, color: '#f8fafc' }}>
+                                  {item.name}
                                 </span>
-                              )}
-                              {isUpdated && (
-                                <span style={{ fontSize: '0.68rem', background: '#38bdf8', color: '#000', padding: '1px 6px', borderRadius: 4, fontWeight: 800 }}>
-                                  +{newQty} MORE
-                                </span>
-                              )}
+                                {isNew && (
+                                  <span style={{ fontSize: '0.68rem', background: '#f59e0b', color: '#000', padding: '1px 6px', borderRadius: 4, fontWeight: 800 }}>
+                                    +NEW
+                                  </span>
+                                )}
+                                {isUpdated && (
+                                  <span style={{ fontSize: '0.68rem', background: '#38bdf8', color: '#000', padding: '1px 6px', borderRadius: 4, fontWeight: 800 }}>
+                                    +{newQty} MORE
+                                  </span>
+                                )}
+                              </div>
+                              {item.description &&
+                                item.description.trim() &&
+                                item.description.trim().toLowerCase() !== (item.category || '').trim().toLowerCase() && (
+                                  <span style={{ fontSize: '0.8rem', color: '#fde68a', fontWeight: 500, marginTop: 2 }}>
+                                    📝 {item.description}
+                                  </span>
+                                )}
                             </div>
                             <span style={{ fontWeight: 800, color: isNew ? '#f59e0b' : '#38bdf8', marginLeft: 8 }}>
                               x{item.qty}
