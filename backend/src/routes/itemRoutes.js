@@ -23,46 +23,79 @@ function mapItem(r) {
   };
 }
 
-function parseAndValidateItem(body) {
-  const { name, price, color, category, description, stockQuantity } = body || {};
-  const cleanName = sanitizeText(name);
-  if (!cleanName || cleanName.length > 100) {
-    return { error: 'Item name must be between 1 and 100 characters' };
+export function parseAndValidateItem(body, isUpdate = false) {
+  if (!body || typeof body !== 'object') {
+    return { error: 'Request body must be a JSON object' };
   }
-  const numPrice = typeof price === 'number' ? price : Number(price);
-  if (isNaN(numPrice) || numPrice < 0 || numPrice > 999999) {
-    return { error: 'Price must be a valid number between 0 and 999,999' };
+
+  const { name, price, color, category, description, stockQuantity } = body;
+  const value = {};
+
+  // For updates, at least one recognized field must be provided
+  if (isUpdate && Object.keys(body).length === 0) {
+    return { error: 'No fields provided for update' };
   }
-  const cleanCategory = sanitizeText(category);
-  if (cleanCategory.length > 50) {
-    return { error: 'Category must be under 50 characters' };
-  }
-  const cleanDescription = sanitizeText(description, { allowNewlines: true });
-  if (cleanDescription.length > 500) {
-    return { error: 'Description must be under 500 characters' };
-  }
-  const cleanColor = sanitizeText(color);
-  if (cleanColor.length > 20) {
-    return { error: 'Color must be under 20 characters' };
-  }
-  let cleanStock = null;
-  if (stockQuantity !== null && stockQuantity !== undefined && stockQuantity !== '') {
-    const s = Number(stockQuantity);
-    if (!Number.isInteger(s) || s < 0 || s > 999999) {
-      return { error: 'Stock quantity must be an integer between 0 and 999,999' };
+
+  // Name validation: required on create; validated if present on update
+  if (!isUpdate || name !== undefined) {
+    const cleanName = sanitizeText(name);
+    if (!cleanName || cleanName.length > 100) {
+      return { error: 'Item name must be between 1 and 100 characters' };
     }
-    cleanStock = s;
+    value.name = cleanName;
   }
-  return {
-    value: {
-      name: cleanName,
-      price: numPrice,
-      color: cleanColor || '#4f46e5',
-      category: cleanCategory,
-      description: cleanDescription,
-      stockQuantity: cleanStock,
-    },
-  };
+
+  // Price validation: required on create; validated if present on update
+  if (!isUpdate || price !== undefined) {
+    const numPrice = typeof price === 'number' ? price : Number(price);
+    if (isNaN(numPrice) || numPrice < 0 || numPrice > 999999) {
+      return { error: 'Price must be a valid number between 0 and 999,999' };
+    }
+    value.price = numPrice;
+  }
+
+  // Category validation
+  if (!isUpdate || category !== undefined) {
+    const cleanCategory = sanitizeText(category);
+    if (cleanCategory.length > 50) {
+      return { error: 'Category must be under 50 characters' };
+    }
+    value.category = cleanCategory;
+  }
+
+  // Description validation
+  if (!isUpdate || description !== undefined) {
+    const cleanDescription = sanitizeText(description, { allowNewlines: true });
+    if (cleanDescription.length > 500) {
+      return { error: 'Description must be under 500 characters' };
+    }
+    value.description = cleanDescription;
+  }
+
+  // Color validation
+  if (!isUpdate || color !== undefined) {
+    const cleanColor = sanitizeText(color);
+    if (cleanColor.length > 20) {
+      return { error: 'Color must be under 20 characters' };
+    }
+    value.color = cleanColor || '#4f46e5';
+  }
+
+  // Stock quantity validation:
+  // Can be null / empty string (unlimited), or integer between 0 and 999,999
+  if (!isUpdate || 'stockQuantity' in body) {
+    let cleanStock = null;
+    if (stockQuantity !== null && stockQuantity !== undefined && stockQuantity !== '') {
+      const s = Number(stockQuantity);
+      if (!Number.isInteger(s) || s < 0 || s > 999999) {
+        return { error: 'Stock quantity must be an integer between 0 and 999,999' };
+      }
+      cleanStock = s;
+    }
+    value.stockQuantity = cleanStock;
+  }
+
+  return { value };
 }
 
 // GET /api/items
@@ -78,7 +111,7 @@ router.get(
 router.post(
   '/',
   wrap(async (req, res) => {
-    const { error, value } = parseAndValidateItem(req.body);
+    const { error, value } = parseAndValidateItem(req.body, false);
     if (error) return res.status(400).json({ error });
 
     const item = await itemsRepo.create(req.userId, value);
@@ -108,7 +141,7 @@ router.put(
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: 'Invalid item ID' });
     }
-    const { error, value } = parseAndValidateItem(req.body);
+    const { error, value } = parseAndValidateItem(req.body, true);
     if (error) return res.status(400).json({ error });
 
     const item = await itemsRepo.update(id, req.userId, value);

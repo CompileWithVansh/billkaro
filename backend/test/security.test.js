@@ -492,3 +492,45 @@ test('Timing Attack Mitigation - Dummy Hash Generation', async () => {
   // bcrypt with 10 rounds takes roughly 50-150ms of CPU hashing time, ensuring uniform timing
   assert.ok(elapsed >= 0);
 });
+
+test('Item Validation & Partial Update - Inventory Stock Adjustments', async () => {
+  const { parseAndValidateItem } = await import('../src/routes/itemRoutes.js');
+
+  // 1. Create mode (isUpdate = false) requires name and price
+  const createEmpty = parseAndValidateItem({}, false);
+  assert.ok(createEmpty.error, 'Should require name and price on item create');
+
+  const createValid = parseAndValidateItem({ name: 'Chai', price: 20 }, false);
+  assert.equal(createValid.error, undefined);
+  assert.equal(createValid.value.name, 'Chai');
+  assert.equal(createValid.value.price, 20);
+  assert.equal(createValid.value.stockQuantity, null);
+
+  // 2. Update mode (isUpdate = true) allows partial stockQuantity: 0 (Out of stock)
+  const updateOutOfStock = parseAndValidateItem({ stockQuantity: 0 }, true);
+  assert.equal(updateOutOfStock.error, undefined);
+  assert.equal(updateOutOfStock.value.stockQuantity, 0);
+  assert.equal(updateOutOfStock.value.name, undefined);
+
+  // 3. Update mode allows stockQuantity: null or '' (Unlimited stock)
+  const updateUnlimitedNull = parseAndValidateItem({ stockQuantity: null }, true);
+  assert.equal(updateUnlimitedNull.error, undefined);
+  assert.equal(updateUnlimitedNull.value.stockQuantity, null);
+
+  const updateUnlimitedEmpty = parseAndValidateItem({ stockQuantity: '' }, true);
+  assert.equal(updateUnlimitedEmpty.error, undefined);
+  assert.equal(updateUnlimitedEmpty.value.stockQuantity, null);
+
+  // 4. Update mode allows positive integer stock
+  const updateStock = parseAndValidateItem({ stockQuantity: 45 }, true);
+  assert.equal(updateStock.error, undefined);
+  assert.equal(updateStock.value.stockQuantity, 45);
+
+  // 5. Rejects invalid stock values
+  const invalidNegative = parseAndValidateItem({ stockQuantity: -5 }, true);
+  assert.ok(invalidNegative.error, 'Should reject negative stock');
+
+  const invalidDecimal = parseAndValidateItem({ stockQuantity: 3.14 }, true);
+  assert.ok(invalidDecimal.error, 'Should reject non-integer stock');
+});
+

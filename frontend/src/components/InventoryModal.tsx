@@ -42,21 +42,35 @@ export default function InventoryModal({ items, onClose, onRefreshItems }: Props
   async function handleSave() {
     try {
       setSaving(true);
-      const updates = items.map((item) => {
+      const changedItems = items.filter((item) => {
         const strVal = stockMap[item.id];
-        const newStock = strVal === '' ? null : Number(strVal);
-        if (newStock !== item.stockQuantity) {
-          return api.put(`/items/${item.id}`, { stockQuantity: newStock });
-        }
-        return Promise.resolve();
+        const newStock = strVal === '' || strVal === undefined ? null : Number(strVal);
+        return newStock !== item.stockQuantity;
+      });
+
+      if (changedItems.length === 0) {
+        onClose();
+        return;
+      }
+
+      const updates = changedItems.map((item) => {
+        const strVal = stockMap[item.id];
+        const newStock = strVal === '' || strVal === undefined ? null : Number(strVal);
+        return api.put(`/items/${item.id}`, {
+          name: item.name,
+          price: item.price,
+          category: item.category,
+          stockQuantity: newStock,
+        });
       });
 
       await Promise.all(updates);
       onRefreshItems();
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update inventory:', err);
-      alert('Could not update inventory.');
+      const msg = err?.response?.data?.error || 'Could not update inventory.';
+      alert(msg);
     } finally {
       setSaving(false);
     }
