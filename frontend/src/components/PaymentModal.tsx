@@ -157,17 +157,196 @@ export default function PaymentModal({
 
   return (
     <div className="modal-backdrop" onClick={isSubmitting ? undefined : onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
-        <h3>Complete Payment</h3>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440, padding: '18px 20px', maxHeight: '94vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Complete Payment</h3>
+          <button
+            type="button"
+            onClick={isSubmitting ? undefined : onClose}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#94a3b8',
+              fontSize: '1.3rem',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              padding: '2px 6px',
+              lineHeight: 1,
+            }}
+            title="Close"
+          >
+            ✕
+          </button>
+        </div>
 
-        {/* Discount Section */}
+        {/* 1. QR Code / Payment Method View FIRST at Top */}
+        {method === 'upi' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '2px 0 10px' }}>
+            {error ? (
+              <div className="error-box" style={{ width: '100%', marginBottom: 8 }}>{error}</div>
+            ) : (
+              <div
+                className="qr-box"
+                style={{
+                  background: '#ffffff',
+                  borderRadius: 16,
+                  padding: 12,
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  margin: '0 0 6px',
+                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
+                }}
+              >
+                {dataUrl ? (
+                  <img
+                    src={dataUrl}
+                    alt="Payment QR"
+                    width={200}
+                    height={200}
+                    style={{ borderRadius: 8, display: 'block' }}
+                  />
+                ) : (
+                  <div style={{ color: '#64748b', padding: '75px 35px', textAlign: 'center', fontSize: '0.88rem' }}>
+                    Generating QR…
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="qr-note" style={{ fontSize: '0.78rem', color: '#94a3b8', margin: 0, textAlign: 'center' }}>
+              Scan with any UPI App (Paytm / PhonePe / GPay)
+            </div>
+          </div>
+        )}
+
+        {method === 'cash' && (
+          <div
+            style={{
+              background: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              borderRadius: 14,
+              padding: '16px 20px',
+              margin: '6px 0 12px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '2.2rem', marginBottom: 4 }}>💵</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#4ade80' }}>
+              Cash Payment
+            </div>
+            <div style={{ fontSize: '0.82rem', color: '#94a3b8', marginTop: 2 }}>
+              Collect physical cash at counter and confirm below
+            </div>
+          </div>
+        )}
+
+        {method === 'split' && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              margin: '6px 0 12px',
+              background: 'var(--panel-2, #1e293b)',
+              padding: 12,
+              borderRadius: 14,
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div style={{ fontSize: '0.82rem', color: '#94a3b8', fontWeight: 600 }}>Split Bill (Cash + UPI)</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: 4, fontWeight: 600 }}>💵 Cash Amount</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={splitCash}
+                  onChange={(e) => handleSplitCashChange(e.target.value)}
+                  placeholder="0.00"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#4ade80', fontWeight: 700, fontSize: '16px' }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: 4, fontWeight: 600 }}>📱 UPI Amount (QR)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={splitUpi}
+                  onChange={(e) => handleSplitUpiChange(e.target.value)}
+                  placeholder="0.00"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#38bdf8', fontWeight: 700, fontSize: '16px' }}
+                />
+              </div>
+            </div>
+
+            {Number(splitUpi) > 0 && (
+              <div style={{ marginTop: 4, textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 6 }}>
+                  Scan UPI QR for balance: <strong style={{ color: '#38bdf8' }}>₹{Number(splitUpi).toFixed(2)}</strong>
+                </div>
+                {dataUrl && (
+                  <div className="qr-box" style={{ padding: 8, display: 'inline-block', margin: 0, background: '#fff', borderRadius: 12 }}>
+                    <img src={dataUrl} alt="Split UPI QR" width={150} height={150} style={{ borderRadius: 6, display: 'block' }} />
+                  </div>
+                )}
+              </div>
+            )}
+            {error && <div className="error-box" style={{ color: '#ef4444', fontSize: '0.8rem', margin: 0 }}>{error}</div>}
+          </div>
+        )}
+
+        {method === 'udhaar' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '6px 0 12px', background: 'var(--panel-2, #1e293b)', padding: 12, borderRadius: 14, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '0.82rem', color: '#94a3b8', fontWeight: 600 }}>Customer Khata (Udhaar / Credit)</div>
+            <div className="field" style={{ margin: 0 }}>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>Customer Name *</label>
+              <input
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="e.g. Ramesh Kumar"
+                disabled={isSubmitting}
+                autoFocus
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#f8fafc', fontSize: '16px' }}
+              />
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>Customer Phone (for 1-click WhatsApp)</label>
+              <input
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="e.g. 9876543210"
+                disabled={isSubmitting}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#f8fafc', fontSize: '16px' }}
+              />
+            </div>
+            {error && <div className="error-box" style={{ color: '#ef4444', fontSize: '0.8rem', margin: 0 }}>{error}</div>}
+          </div>
+        )}
+
+        {/* 2. Total Payable Amount Underneath QR */}
+        <div style={{ textAlign: 'center', margin: '4px 0 10px' }}>
+          <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+            Total Payable
+          </div>
+          <div className="qr-amount" style={{ margin: '2px 0', fontSize: '2rem', fontWeight: 800, color: '#38bdf8', lineHeight: 1.1 }}>
+            ₹{finalPayable.toFixed(2)}
+          </div>
+          {discountAmount > 0 && (
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 3 }}>
+              Subtotal: ₹{baseSubtotal.toFixed(2)} • Discount: -₹{discountAmount.toFixed(2)}
+            </div>
+          )}
+        </div>
+
+        {/* 3. Apply Discount Section in Thumb Reach Zone */}
         <div
           style={{
             background: 'var(--panel-2, #1e293b)',
             border: '1px solid var(--border, #334155)',
             borderRadius: 12,
             padding: '10px 14px',
-            margin: '12px 0 14px',
+            margin: '0 0 12px',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -176,7 +355,7 @@ export default function PaymentModal({
               <button
                 type="button"
                 className={`btn sm-btn ${discountType === 'percent' ? 'primary' : 'ghost'}`}
-                style={{ fontSize: '0.78rem', padding: '2px 10px', minWidth: 36, fontWeight: 700 }}
+                style={{ fontSize: '0.78rem', padding: '2px 10px', minWidth: 36, fontWeight: 700, minHeight: 28 }}
                 onClick={() => setDiscountType('percent')}
               >
                 %
@@ -184,7 +363,7 @@ export default function PaymentModal({
               <button
                 type="button"
                 className={`btn sm-btn ${discountType === 'flat' ? 'primary' : 'ghost'}`}
-                style={{ fontSize: '0.78rem', padding: '2px 10px', minWidth: 36, fontWeight: 700 }}
+                style={{ fontSize: '0.78rem', padding: '2px 10px', minWidth: 36, fontWeight: 700, minHeight: 28 }}
                 onClick={() => setDiscountType('flat')}
               >
                 ₹
@@ -214,7 +393,7 @@ export default function PaymentModal({
               <button
                 type="button"
                 className="btn sm-btn ghost"
-                style={{ fontSize: '0.78rem', color: '#94a3b8' }}
+                style={{ fontSize: '0.78rem', color: '#94a3b8', minHeight: 34 }}
                 onClick={() => setDiscountInput('')}
                 title="Clear discount"
               >
@@ -231,27 +410,12 @@ export default function PaymentModal({
           )}
         </div>
 
-        {/* Final Amount Display */}
-        <div style={{ textAlign: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Total Payable
-          </div>
-          <div className="qr-amount" style={{ margin: '4px 0', fontSize: '2rem', fontWeight: 800, color: '#38bdf8' }}>
-            ₹{finalPayable.toFixed(2)}
-          </div>
-          {discountAmount > 0 && (
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              Subtotal: ₹{baseSubtotal.toFixed(2)} • Discount: -₹{discountAmount.toFixed(2)}
-            </div>
-          )}
-        </div>
-
-        {/* Payment Tabs */}
-        <div className="payment-tabs" style={{ display: 'flex', gap: 6, margin: '12px 0', flexWrap: 'wrap' }}>
+        {/* 4. Payment Method Tabs (UPI, Cash, Split, Udhaar) */}
+        <div className="payment-tabs" style={{ display: 'flex', gap: 6, margin: '0 0 14px', flexWrap: 'wrap' }}>
           <button
             type="button"
             className={`btn sm-btn ${method === 'upi' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1 }}
+            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1, minHeight: 40 }}
             disabled={isSubmitting}
             onClick={() => setMethod('upi')}
           >
@@ -260,7 +424,7 @@ export default function PaymentModal({
           <button
             type="button"
             className={`btn sm-btn ${method === 'cash' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1 }}
+            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1, minHeight: 40 }}
             disabled={isSubmitting}
             onClick={() => setMethod('cash')}
           >
@@ -269,7 +433,7 @@ export default function PaymentModal({
           <button
             type="button"
             className={`btn sm-btn ${method === 'split' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1 }}
+            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1, minHeight: 40 }}
             disabled={isSubmitting}
             onClick={() => {
               setMethod('split');
@@ -284,7 +448,7 @@ export default function PaymentModal({
           <button
             type="button"
             className={`btn sm-btn ${method === 'udhaar' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1 }}
+            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1, minHeight: 40 }}
             disabled={isSubmitting}
             onClick={() => setMethod('udhaar')}
           >
@@ -292,107 +456,8 @@ export default function PaymentModal({
           </button>
         </div>
 
-        {method === 'upi' && (
-          <>
-            <div className="qr-note" style={{ fontSize: '0.8rem', color: '#94a3b8', textAlign: 'center', marginBottom: 8 }}>
-              Scan with any UPI App (Paytm / PhonePe / GPay)
-            </div>
-            {error ? (
-              <div className="error-box">{error}</div>
-            ) : (
-              <div className="qr-box" style={{ textAlign: 'center' }}>
-                {dataUrl ? (
-                  <img src={dataUrl} alt="Payment QR" width={240} height={240} style={{ borderRadius: 8 }} />
-                ) : (
-                  <div style={{ color: '#94a3b8', padding: 40 }}>Generating QR…</div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {method === 'cash' && (
-          <div style={{ textAlign: 'center', padding: '16px 0', fontSize: '1.05rem' }}>
-            Collect <strong style={{ color: '#4ade80' }}>₹{finalPayable.toFixed(2)}</strong> cash from customer.
-          </div>
-        )}
-
-        {method === 'split' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '10px 0', background: 'var(--panel-2, #1e293b)', padding: 12, borderRadius: 12, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '0.82rem', color: '#94a3b8', fontWeight: 600 }}>Split Bill (Cash + UPI)</div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>💵 Cash Amount</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={splitCash}
-                  onChange={(e) => handleSplitCashChange(e.target.value)}
-                  placeholder="0.00"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#4ade80', fontWeight: 700, fontSize: '16px' }}
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>📱 UPI Amount (QR)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={splitUpi}
-                  onChange={(e) => handleSplitUpiChange(e.target.value)}
-                  placeholder="0.00"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#38bdf8', fontWeight: 700, fontSize: '16px' }}
-                />
-              </div>
-            </div>
-
-            {Number(splitUpi) > 0 && (
-              <div style={{ marginTop: 8, textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 4 }}>
-                  Scan UPI QR for remaining balance: <strong style={{ color: '#38bdf8' }}>₹{Number(splitUpi).toFixed(2)}</strong>
-                </div>
-                {error ? (
-                  <div className="error-box">{error}</div>
-                ) : dataUrl ? (
-                  <div className="qr-box" style={{ padding: 6, display: 'inline-block' }}>
-                    <img src={dataUrl} alt="Split UPI QR" width={180} height={180} style={{ borderRadius: 8 }} />
-                  </div>
-                ) : null}
-              </div>
-            )}
-            {error && <div className="error-box" style={{ color: '#ef4444', fontSize: '0.8rem' }}>{error}</div>}
-          </div>
-        )}
-
-        {method === 'udhaar' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '10px 0' }}>
-            <div className="field">
-              <label style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Customer Name *</label>
-              <input
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="e.g. Ramesh Kumar"
-                disabled={isSubmitting}
-                autoFocus
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#f8fafc', fontSize: '16px' }}
-              />
-            </div>
-            <div className="field">
-              <label style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Customer Phone (for 1-click WhatsApp Reminders)</label>
-              <input
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="e.g. 9876543210"
-                disabled={isSubmitting}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#f8fafc', fontSize: '16px' }}
-              />
-            </div>
-            {error && <div className="error-box" style={{ color: '#ef4444', fontSize: '0.8rem' }}>{error}</div>}
-          </div>
-        )}
-
-        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* 5 & 6. Paid Button & Below Actions */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {/* Main Primary Green Save Button */}
           <button
             type="button"
@@ -430,7 +495,7 @@ export default function PaymentModal({
               className="btn ghost"
               style={{
                 flex: 1.2,
-                fontSize: '0.82rem',
+                fontSize: '0.85rem',
                 color: '#22c55e',
                 borderColor: 'rgba(34, 197, 94, 0.4)',
                 opacity: isSubmitting ? 0.5 : 1,
@@ -447,7 +512,7 @@ export default function PaymentModal({
               className="btn ghost"
               style={{
                 flex: 0.8,
-                fontSize: '0.82rem',
+                fontSize: '0.85rem',
                 opacity: isSubmitting ? 0.5 : 1,
                 cursor: isSubmitting ? 'not-allowed' : 'pointer',
               }}
