@@ -873,6 +873,9 @@ select {
 .mobile-bottom-nav {
   display: none;
 }
+.stock-save-bar {
+  margin-bottom: 0;
+}
 
 .icon-btn-label {
   display: inline;
@@ -1027,7 +1030,7 @@ select {
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border-top: 1px solid var(--border);
-    z-index: 95;
+    z-index: 1000;
     align-items: center;
     justify-content: space-around;
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
@@ -1073,6 +1076,10 @@ select {
   .mobile-nav-btn.active .mobile-nav-label {
     font-weight: 800;
     color: #38bdf8;
+  }
+
+  .stock-save-bar {
+    margin-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 
   .item-grid {

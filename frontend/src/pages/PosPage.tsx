@@ -52,6 +52,10 @@ import InventoryModal from '../components/InventoryModal';
 import ConnectKdsModal from '../components/ConnectKdsModal';
 import { MenuScannerModal } from '../components/MenuScannerModal';
 import ArrangeCategoriesModal from '../components/ArrangeCategoriesModal';
+import KitchenTab from '../components/KitchenTab';
+import StockTab from '../components/StockTab';
+import ReportsTab from '../components/ReportsTab';
+import SettingsTab from '../components/SettingsTab';
 import { nextItemColor } from '../colors';
 import { printBill } from '../components/PrintReceipt';
 import { saveCachedItems, getCachedItems, queueOfflineBill, syncPendingBills } from '../offlineStore';
@@ -131,6 +135,9 @@ export default function PosPage() {
       console.warn('Failed to persist tabs to localStorage:', e);
     }
   }, [bills, activeId]);
+
+  // Mobile Full-Screen 5-Tab Navigation State ('billing' | 'kitchen' | 'stock' | 'reports' | 'settings')
+  const [mobileMainTab, setMobileMainTab] = useState<'billing' | 'kitchen' | 'stock' | 'reports' | 'settings'>('billing');
 
   // Modals
   const [showSettings, setShowSettings] = useState(false);
@@ -825,7 +832,34 @@ export default function PosPage() {
       {/* Top bar */}
       <div className="topbar">
         <div className="topbar-brand">
-          <div className="logo">Bill<span>Karo</span></div>
+          {mobileMainTab !== 'billing' ? (
+            <button
+              type="button"
+              className="btn sm-btn ghost"
+              onClick={() => setMobileMainTab('billing')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 10px',
+                borderRadius: 10,
+                color: '#38bdf8',
+                borderColor: 'rgba(56, 189, 248, 0.4)',
+                background: 'rgba(56, 189, 248, 0.1)',
+                fontWeight: 700,
+                fontSize: '0.82rem',
+                minHeight: 34,
+                cursor: 'pointer',
+              }}
+              title="Return to Billing POS"
+            >
+              <span>←</span>
+              <span>🛒 Billing</span>
+            </button>
+          ) : (
+            <div className="logo">Bill<span>Karo</span></div>
+          )}
+
           <span
             className={`online-badge ${isOnline ? 'online' : 'offline'}`}
             title={isOnline ? 'Connected to cloud server' : 'Offline Mode — Billing and receipts active'}
@@ -833,6 +867,15 @@ export default function PosPage() {
             <span>{isOnline ? '🟢' : '⚡'}</span>
             <span className="online-badge-text">{isOnline ? 'Online' : 'Offline'}</span>
           </span>
+
+          {mobileMainTab !== 'billing' && (
+            <span style={{ fontSize: '0.82rem', color: '#cbd5e1', fontWeight: 700, marginLeft: 2 }}>
+              {mobileMainTab === 'kitchen' && '🍳 Kitchen'}
+              {mobileMainTab === 'stock' && '📦 Stock'}
+              {mobileMainTab === 'reports' && '📊 Reports'}
+              {mobileMainTab === 'settings' && '⚙️ Settings'}
+            </span>
+          )}
         </div>
 
         <div className="spacer" />
@@ -906,7 +949,14 @@ export default function PosPage() {
                   </button>
                   <button
                     className="menu-dropdown-item"
-                    onClick={() => setShowInventory(true)}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      if (window.innerWidth <= 768) {
+                        setMobileMainTab('stock');
+                      } else {
+                        setShowInventory(true);
+                      }
+                    }}
                   >
                     📦 Inventory & Stock
                   </button>
@@ -919,8 +969,13 @@ export default function PosPage() {
                   <button
                     className="menu-dropdown-item"
                     onClick={() => {
-                      setHistoryInitialTab('bills');
-                      setShowHistory(true);
+                      setMenuOpen(false);
+                      if (window.innerWidth <= 768) {
+                        setMobileMainTab('reports');
+                      } else {
+                        setHistoryInitialTab('bills');
+                        setShowHistory(true);
+                      }
                     }}
                   >
                     📜 History & Reports
@@ -933,7 +988,14 @@ export default function PosPage() {
                   </button>
                   <button
                     className="menu-dropdown-item"
-                    onClick={() => navigate('/kds')}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      if (window.innerWidth <= 768) {
+                        setMobileMainTab('kitchen');
+                      } else {
+                        navigate('/kds');
+                      }
+                    }}
                   >
                     🍳 Kitchen KDS
                   </button>
@@ -952,7 +1014,14 @@ export default function PosPage() {
                   </button>
                   <button
                     className="menu-dropdown-item"
-                    onClick={() => setShowSettings(true)}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      if (window.innerWidth <= 768) {
+                        setMobileMainTab('settings');
+                      } else {
+                        setShowSettings(true);
+                      }
+                    }}
                   >
                     ⚙️ Store Settings
                   </button>
@@ -963,8 +1032,19 @@ export default function PosPage() {
         </div>
       </div>
 
-      {/* Bill tabs */}
-      <div className="tabbar">
+      {/* Full Screen Tab Views or Standard POS Billing Workspace */}
+      {mobileMainTab === 'kitchen' ? (
+        user && <KitchenTab user={user} />
+      ) : mobileMainTab === 'stock' ? (
+        <StockTab items={items} onRefreshItems={fetchItems} />
+      ) : mobileMainTab === 'reports' ? (
+        user && <ReportsTab user={user} items={items} />
+      ) : mobileMainTab === 'settings' ? (
+        <SettingsTab />
+      ) : (
+        <>
+          {/* Bill tabs */}
+          <div className="tabbar">
         {bills.map((b) => {
           const t = billTotal(b, taxPercent);
           return (
@@ -1347,6 +1427,8 @@ export default function PosPage() {
           </div>
         </div>
       </div>
+    </>
+  )}
 
       {/* Modals */}
       {showEditor && (
@@ -1455,12 +1537,12 @@ export default function PosPage() {
       <nav className="mobile-bottom-nav" aria-label="Mobile Navigation">
         <button
           type="button"
-          className={`mobile-nav-btn ${!showInventory && !showHistory && !showSettings ? 'active' : ''}`}
+          className={`mobile-nav-btn ${mobileMainTab === 'billing' ? 'active' : ''}`}
           onClick={() => {
             setShowInventory(false);
             setShowHistory(false);
             setShowSettings(false);
-            setMobileView('items');
+            setMobileMainTab('billing');
           }}
         >
           <span className="mobile-nav-icon">🛒</span>
@@ -1468,19 +1550,25 @@ export default function PosPage() {
         </button>
         <button
           type="button"
-          className="mobile-nav-btn"
-          onClick={() => navigate('/kds')}
+          className={`mobile-nav-btn ${mobileMainTab === 'kitchen' ? 'active' : ''}`}
+          onClick={() => {
+            setShowInventory(false);
+            setShowHistory(false);
+            setShowSettings(false);
+            setMobileMainTab('kitchen');
+          }}
         >
           <span className="mobile-nav-icon">🍳</span>
           <span className="mobile-nav-label">Kitchen</span>
         </button>
         <button
           type="button"
-          className={`mobile-nav-btn ${showInventory ? 'active' : ''}`}
+          className={`mobile-nav-btn ${mobileMainTab === 'stock' ? 'active' : ''}`}
           onClick={() => {
+            setShowInventory(false);
             setShowHistory(false);
             setShowSettings(false);
-            setShowInventory(true);
+            setMobileMainTab('stock');
           }}
         >
           <span className="mobile-nav-icon">📦</span>
@@ -1488,12 +1576,12 @@ export default function PosPage() {
         </button>
         <button
           type="button"
-          className={`mobile-nav-btn ${showHistory && historyInitialTab === 'reports' ? 'active' : ''}`}
+          className={`mobile-nav-btn ${mobileMainTab === 'reports' ? 'active' : ''}`}
           onClick={() => {
             setShowInventory(false);
+            setShowHistory(false);
             setShowSettings(false);
-            setHistoryInitialTab('reports');
-            setShowHistory(true);
+            setMobileMainTab('reports');
           }}
         >
           <span className="mobile-nav-icon">📊</span>
@@ -1501,11 +1589,12 @@ export default function PosPage() {
         </button>
         <button
           type="button"
-          className={`mobile-nav-btn ${showSettings ? 'active' : ''}`}
+          className={`mobile-nav-btn ${mobileMainTab === 'settings' ? 'active' : ''}`}
           onClick={() => {
             setShowInventory(false);
             setShowHistory(false);
-            setShowSettings(true);
+            setShowSettings(false);
+            setMobileMainTab('settings');
           }}
         >
           <span className="mobile-nav-icon">⚙️</span>

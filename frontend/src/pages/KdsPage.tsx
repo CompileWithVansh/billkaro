@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../auth/AuthContext';
@@ -220,7 +221,7 @@ export default function KdsPage() {
   function clearTicket(ticketId: string | number) {
     setTickets((prev) => prev.filter((t) => t.id !== ticketId));
     if (pairedStoreId) {
-      api.post('/bills/kds/clear-ticket', { storeId: pairedStoreId, ticketId }).catch(() => {});
+      api.post('/bills/kds/clear-ticket', { storeId: pairedStoreId, ticketId }).catch(() => { });
     }
   }
 
@@ -456,7 +457,7 @@ export default function KdsPage() {
         </div>
       )}
 
-      <footer style={{ marginTop: 40, paddingTop: 16, borderTop: '1px solid #1e293b', textAlign: 'center', fontSize: '0.8rem', color: '#64748b' }}>
+      <footer style={{ marginTop: 'auto', paddingTop: 20, borderTop: '1px solid #1e293b', textAlign: 'center', fontSize: '0.8rem', color: '#64748b' }}>
         © 2026 BillKaro KDS • Made with ❤️ by Vansh Gupta
       </footer>
     </div>
