@@ -7,9 +7,28 @@ interface Props {
   subtotal: number;
   tax: number;
   total: number;
+  discountType?: 'percent' | 'flat' | null;
+  discountValue?: number;
+  discountAmount?: number;
+  paymentMethod?: string;
+  cashAmount?: number | null;
+  upiAmount?: number | null;
 }
 
-export function printBill({ bill, user, items, subtotal, tax, total }: Props) {
+export function printBill({
+  bill,
+  user,
+  items,
+  subtotal,
+  tax,
+  total,
+  discountType,
+  discountValue,
+  discountAmount,
+  paymentMethod,
+  cashAmount,
+  upiAmount,
+}: Props) {
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
@@ -40,12 +59,38 @@ export function printBill({ bill, user, items, subtotal, tax, total }: Props) {
       <tr class="item-sep"><td colspan="4"><hr class="row-divider" /></td></tr>`;
   }).join('');
 
+  const effectiveDiscount = discountAmount !== undefined ? discountAmount : (bill.discountAmount || 0);
+  const effectiveDiscountType = discountType !== undefined ? discountType : bill.discountType;
+  const effectiveDiscountValue = discountValue !== undefined ? discountValue : bill.discountValue;
+
+  const discountRow = effectiveDiscount > 0
+    ? `<tr class="summary-row" style="font-weight: 600;">
+         <td colspan="3">Discount ${effectiveDiscountType === 'percent' ? `(${effectiveDiscountValue}%)` : ''}</td>
+         <td>- ₹${effectiveDiscount.toFixed(2)}</td>
+       </tr>`
+    : '';
+
   const taxRow = tax > 0
     ? `<tr class="summary-row">
-         <td colspan="3">Tax (${user.taxPercent}%)</td>
+         <td colspan="3">Tax (${user.taxPercent || 0}%)</td>
          <td>₹${tax.toFixed(2)}</td>
        </tr>`
     : '';
+
+  let paymentRow = '';
+  if (paymentMethod === 'split' && cashAmount != null && upiAmount != null) {
+    paymentRow = `<tr class="summary-row" style="font-size: 10px; color: #333;">
+      <td colspan="4" style="text-align: right; padding-top: 4px;">
+        Paid: SPLIT (Cash ₹${cashAmount.toFixed(2)} | UPI ₹${upiAmount.toFixed(2)})
+      </td>
+    </tr>`;
+  } else if (paymentMethod) {
+    paymentRow = `<tr class="summary-row" style="font-size: 10px; color: #333;">
+      <td colspan="4" style="text-align: right; padding-top: 4px;">
+        Paid: ${paymentMethod.toUpperCase()}
+      </td>
+    </tr>`;
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -99,34 +144,27 @@ export function printBill({ bill, user, items, subtotal, tax, total }: Props) {
       display: flex;
       justify-content: space-between;
       font-size: 11px;
-      margin-bottom: 2px;
     }
 
-    /* ---------- Items table ---------- */
+    /* ---------- Item table ---------- */
     table { width: 100%; border-collapse: collapse; }
+    th    { font-size: 11px; padding: 2px 0; }
+    td    { font-size: 11px; padding: 2px 0; vertical-align: top; }
 
-    thead th {
-      font-size: 10px;
-      text-transform: uppercase;
-      border-bottom: 1px solid #000;
-      padding: 3px 0;
-    }
-    .col-name  { text-align: left;   width: 44%; }
-    .col-qty   { text-align: center; width: 12%; }
-    .col-price { text-align: right;  width: 22%; }
-    .col-total { text-align: right;  width: 22%; }
+    .col-name  { text-align: left;  width: 48%; }
+    .col-qty   { text-align: center; width: 14%; }
+    .col-price { text-align: right;  width: 18%; }
+    .col-total { text-align: right;  width: 20%; }
 
-    .item-row td { padding: 5px 0 3px; vertical-align: top; }
-    .item-name   { text-align: left; }
-    .item-desc   { font-size: 10px; color: #555; margin-top: 2px; }
-    .item-qty    { text-align: center; }
-    .item-price  { text-align: right; }
-    .item-total  { text-align: right; font-weight: bold; }
+    .item-name  { text-align: left; }
+    .item-desc  { font-size: 9px; color: #555; padding-left: 2px; }
+    .item-qty   { text-align: center; }
+    .item-price { text-align: right; }
+    .item-total { text-align: right; }
 
-    /* ---------- Summary ---------- */
-    .summary-row td { padding: 2px 0; }
-    .summary-row td:first-child { text-align: right; }
-    .summary-row td:last-child  { text-align: right; font-weight: bold; }
+    /* ---------- Summary rows ---------- */
+    .summary-row td:first-child { text-align: right; padding-right: 8px; }
+    .summary-row td:last-child  { text-align: right; }
 
     .total-row { font-size: 15px; font-weight: bold; }
     .total-row td { padding: 4px 0; }
@@ -180,11 +218,13 @@ export function printBill({ bill, user, items, subtotal, tax, total }: Props) {
         <td colspan="3">Subtotal</td>
         <td>₹${subtotal.toFixed(2)}</td>
       </tr>
+      ${discountRow}
       ${taxRow}
       <tr class="total-row">
         <td colspan="3">TOTAL</td>
         <td>₹${total.toFixed(2)}</td>
       </tr>
+      ${paymentRow}
     </tbody>
   </table>
 

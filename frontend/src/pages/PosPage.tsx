@@ -136,6 +136,7 @@ export default function PosPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyInitialTab, setHistoryInitialTab] = useState<'bills' | 'reports'>('bills');
   const [showInventory, setShowInventory] = useState(false);
   const [showConnectKds, setShowConnectKds] = useState(false);
   const [showMenuScanner, setShowMenuScanner] = useState(false);
@@ -150,7 +151,24 @@ export default function PosPage() {
     customerName?: string;
     customerPhone?: string;
     invoiceNumber?: string;
+    discountType?: 'percent' | 'flat' | null;
+    discountValue?: number;
+    discountAmount?: number;
+    cashAmount?: number | null;
+    upiAmount?: number | null;
+    finalTotal?: number;
+    finalTax?: number;
   }>({ paymentMethod: 'upi' });
+
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [itemSearch, setItemSearch] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (searchOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [searchOpen]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -230,9 +248,21 @@ export default function PosPage() {
   }
 
   const displayedItems = useMemo(() => {
-    if (!showCategorySidebar || selectedCategory === 'All') return items;
-    return items.filter((i) => (i.category || 'General').trim() === selectedCategory);
-  }, [items, showCategorySidebar, selectedCategory]);
+    let list = items;
+    if (showCategorySidebar && selectedCategory !== 'All') {
+      list = list.filter((i) => (i.category || 'General').trim() === selectedCategory);
+    }
+    if (itemSearch.trim()) {
+      const q = itemSearch.trim().toLowerCase();
+      list = list.filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) ||
+          (i.category && i.category.toLowerCase().includes(q)) ||
+          (i.description && i.description.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [items, showCategorySidebar, selectedCategory, itemSearch]);
 
   function getCategoryIcon(cat: string): string {
     const c = cat.toLowerCase();
@@ -400,6 +430,10 @@ export default function PosPage() {
   }
 
   function addToCart(item: Item) {
+    if (searchOpen) {
+      setSearchOpen(false);
+      setItemSearch('');
+    }
     updateActiveBill((b) => {
       const existing = b.lines.find((l) => l.itemId === item.id);
       let lines: CartLine[];
@@ -565,11 +599,18 @@ export default function PosPage() {
   }
 
   async function handleConfirmPayment(details: {
-    paymentMethod: 'upi' | 'cash' | 'udhaar';
+    paymentMethod: 'upi' | 'cash' | 'udhaar' | 'split';
     customerName?: string;
     customerPhone?: string;
     status: 'paid' | 'unpaid';
     action: 'save' | 'whatsapp' | 'print';
+    discountType?: 'percent' | 'flat' | null;
+    discountValue?: number;
+    discountAmount?: number;
+    cashAmount?: number | null;
+    upiAmount?: number | null;
+    finalTotal: number;
+    finalTax: number;
   }) {
     // Prevent multiple rapid clicks from triggering duplicate bill creation
     if (isSubmittingBillRef.current) {
@@ -579,10 +620,20 @@ export default function PosPage() {
     isSubmittingBillRef.current = true;
 
     try {
+      const billTotal = details.finalTotal !== undefined ? details.finalTotal : total;
+      const billTax = details.finalTax !== undefined ? details.finalTax : tax;
+
       setCurrentReceiptDetails({
         paymentMethod: details.paymentMethod,
         customerName: details.customerName,
         customerPhone: details.customerPhone,
+        discountType: details.discountType || null,
+        discountValue: details.discountValue || 0,
+        discountAmount: details.discountAmount || 0,
+        cashAmount: details.cashAmount !== undefined ? details.cashAmount : null,
+        upiAmount: details.upiAmount !== undefined ? details.upiAmount : null,
+        finalTotal: billTotal,
+        finalTax: billTax,
       });
 
       // Generate a unique clientBillId token to guarantee idempotency on the server
@@ -592,13 +643,18 @@ export default function PosPage() {
         label: activeBill.label,
         items: activeBill.lines,
         subtotal,
-        tax,
-        total,
+        tax: billTax,
+        total: billTotal,
         paymentMethod: details.paymentMethod,
         customerName: details.customerName,
         customerPhone: details.customerPhone,
         status: details.status,
         clientBillId,
+        discountType: details.discountType || null,
+        discountValue: details.discountValue || 0,
+        discountAmount: details.discountAmount || 0,
+        cashAmount: details.cashAmount !== undefined ? details.cashAmount : null,
+        upiAmount: details.upiAmount !== undefined ? details.upiAmount : null,
       };
 
       let savedBillId = activeBill.savedBillId;
@@ -641,6 +697,13 @@ export default function PosPage() {
         customerName: details.customerName,
         customerPhone: details.customerPhone,
         invoiceNumber: invNumber,
+        discountType: details.discountType || null,
+        discountValue: details.discountValue || 0,
+        discountAmount: details.discountAmount || 0,
+        cashAmount: details.cashAmount !== undefined ? details.cashAmount : null,
+        upiAmount: details.upiAmount !== undefined ? details.upiAmount : null,
+        finalTotal: billTotal,
+        finalTax: billTax,
       });
 
       if (details.action === 'print' && details.paymentMethod !== 'udhaar' && user) {
@@ -649,8 +712,14 @@ export default function PosPage() {
           user,
           items,
           subtotal,
-          tax,
-          total,
+          tax: billTax,
+          total: billTotal,
+          discountType: details.discountType,
+          discountValue: details.discountValue,
+          discountAmount: details.discountAmount,
+          paymentMethod: details.paymentMethod,
+          cashAmount: details.cashAmount,
+          upiAmount: details.upiAmount,
         });
       } else if (details.action === 'whatsapp') {
         const itemsList = activeBill.lines
@@ -661,7 +730,14 @@ export default function PosPage() {
           })
           .join('\n');
 
-        const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill No: *${invNumber}*${activeBill.label ? ` (Table: ${activeBill.label})` : ''}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${tax > 0 ? `\nTax (${user?.taxPercent || 0}%): ₹${tax.toFixed(2)}` : ''}\n*Total Amount: ₹${total.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `AWAITING PAYMENT / via ${(details.paymentMethod || 'UPI').toUpperCase()}`}\n----------------------------------\n\nScan QR Code on Receipt image to Pay via GPay/PhonePe/Paytm!\nThank you for visiting us!`;
+        const discountText = details.discountAmount && details.discountAmount > 0
+          ? `\nDiscount (${details.discountType === 'percent' ? `${details.discountValue}%` : '₹' + details.discountValue}): -₹${details.discountAmount.toFixed(2)}`
+          : '';
+        const splitText = details.paymentMethod === 'split'
+          ? `SPLIT (Cash: ₹${(details.cashAmount || 0).toFixed(2)} + UPI: ₹${(details.upiAmount || 0).toFixed(2)})`
+          : (details.paymentMethod || 'UPI').toUpperCase();
+
+        const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill No: *${invNumber}*${activeBill.label ? ` (Table: ${activeBill.label})` : ''}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${discountText}${billTax > 0 ? `\nTax (${user?.taxPercent || 0}%): ₹${billTax.toFixed(2)}` : ''}\n*Total Amount: ₹${billTotal.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `PAID via ${splitText}`}\n----------------------------------\n\n${details.paymentMethod === 'split' ? `(Remaining UPI: ₹${(details.upiAmount || 0).toFixed(2)} payable via QR)\n` : ''}Thank you for visiting us!`;
 
         // Microtick to ensure ReceiptCard receives invoiceNumber before snapshot
         await new Promise((r) => setTimeout(r, 120));
@@ -842,9 +918,12 @@ export default function PosPage() {
                   </button>
                   <button
                     className="menu-dropdown-item"
-                    onClick={() => setShowHistory(true)}
+                    onClick={() => {
+                      setHistoryInitialTab('bills');
+                      setShowHistory(true);
+                    }}
                   >
-                    📜 History & Udhaar
+                    📜 History & Reports
                   </button>
                   <button
                     className="menu-dropdown-item"
@@ -935,35 +1014,72 @@ export default function PosPage() {
       <div className={`workspace ${mobileView === 'cart' ? 'show-cart-mobile' : 'show-items-mobile'}`}>
         {/* Items */}
         <div className="items-panel">
-          <div className="items-toolbar">
-            <h2>
-              {showCategorySidebar && selectedCategory !== 'All' ? selectedCategory : 'Items'} ({displayedItems.length})
-            </h2>
-            <div className="spacer" />
-            <button
-              type="button"
-              className={`btn sm-btn ${showCategorySidebar ? 'primary' : 'ghost'}`}
-              onClick={toggleCategorySidebar}
-              title="Toggle Blinkit-style categories sidebar"
-              style={{ fontSize: '0.78rem', padding: '3px 10px', borderRadius: 20 }}
-            >
-              🏷️ Categories: {showCategorySidebar ? 'ON' : 'OFF'}
-            </button>
-            {!locked && (
-              <button
-                type="button"
-                className="btn sm-btn ghost"
-                onClick={() => setShowArrangeCategories(true)}
-                style={{ fontSize: '0.78rem', padding: '3px 10px', borderRadius: 20, borderColor: '#38bdf8', color: '#38bdf8' }}
-                title="Arrange category order"
-              >
-                ↕️ Reorder Categories
-              </button>
-            )}
-            {!locked && (
-              <span className="items-toolbar-hint" style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-                Drag items • tap ✎ to edit
-              </span>
+          <div className={`items-toolbar ${searchOpen ? 'items-toolbar-searching' : ''}`}>
+            {!searchOpen ? (
+              <>
+                <button
+                  type="button"
+                  className="items-title-search-btn"
+                  onClick={() => setSearchOpen(true)}
+                  title="Click to search items by name"
+                >
+                  <h2 style={{ margin: 0 }}>
+                    {showCategorySidebar && selectedCategory !== 'All' ? selectedCategory : 'Items'} ({displayedItems.length})
+                  </h2>
+                  <span className="items-search-lens" aria-hidden="true">🔍</span>
+                </button>
+                <div className="spacer" />
+                {!locked && showCategorySidebar && (
+                  <button
+                    type="button"
+                    className="btn sm-btn ghost"
+                    onClick={() => setShowArrangeCategories(true)}
+                    style={{ fontSize: '0.78rem', padding: '3px 10px', borderRadius: 20, borderColor: '#38bdf8', color: '#38bdf8' }}
+                    title="Arrange category order"
+                  >
+                    ↕️ Reorder Categories
+                  </button>
+                )}
+                {!locked && (
+                  <span className="items-toolbar-hint" style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+                    Drag items • tap ✎ to edit
+                  </span>
+                )}
+              </>
+            ) : (
+              <div className="items-search-input-wrap">
+                <span className="items-search-icon" aria-hidden="true">🔍</span>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  className="items-search-input"
+                  placeholder="Search items by name or category…"
+                  value={itemSearch}
+                  onChange={(e) => setItemSearch(e.target.value)}
+                  autoFocus
+                />
+                {itemSearch && (
+                  <button
+                    type="button"
+                    className="items-search-clear-btn"
+                    onClick={() => setItemSearch('')}
+                    title="Clear text"
+                  >
+                    ✕
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn sm-btn ghost items-search-close-btn"
+                  onClick={() => {
+                    setSearchOpen(false);
+                    setItemSearch('');
+                  }}
+                  title="Done searching"
+                >
+                  Done
+                </button>
+              </div>
             )}
           </div>
 
@@ -1265,7 +1381,14 @@ export default function PosPage() {
         />
       )}
 
-      {showHistory && user && <HistoryModal user={user} items={items} onClose={() => setShowHistory(false)} />}
+      {showHistory && user && (
+        <HistoryModal
+          user={user}
+          items={items}
+          initialTab={historyInitialTab}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
       {showInventory && <InventoryModal items={items} onClose={() => setShowInventory(false)} onRefreshItems={fetchItems} />}
       {showConnectKds && <ConnectKdsModal onClose={() => setShowConnectKds(false)} />}
       {showMenuScanner && (
@@ -1281,6 +1404,8 @@ export default function PosPage() {
       {showPayment && (
         <PaymentModal
           amount={total}
+          subtotal={subtotal}
+          taxPercent={taxPercent}
           upiId={user?.upiId ?? null}
           payeeName={user?.payeeName ?? null}
           storeName={user?.storeName ?? 'BillKaro'}
@@ -1312,14 +1437,81 @@ export default function PosPage() {
             items={items}
             invoiceNumber={currentReceiptDetails.invoiceNumber}
             subtotal={subtotal}
-            tax={tax}
-            total={total}
+            tax={currentReceiptDetails.finalTax !== undefined ? currentReceiptDetails.finalTax : tax}
+            total={currentReceiptDetails.finalTotal !== undefined ? currentReceiptDetails.finalTotal : total}
             paymentMethod={currentReceiptDetails.paymentMethod}
             customerName={currentReceiptDetails.customerName}
             customerPhone={currentReceiptDetails.customerPhone}
+            discountType={currentReceiptDetails.discountType}
+            discountValue={currentReceiptDetails.discountValue}
+            discountAmount={currentReceiptDetails.discountAmount}
+            cashAmount={currentReceiptDetails.cashAmount}
+            upiAmount={currentReceiptDetails.upiAmount}
           />
         </div>
       )}
+
+      {/* Mobile 5-Tab Navigation Bar (Strictly Phones < 768px, Hidden on iPad / Desktop) */}
+      <nav className="mobile-bottom-nav" aria-label="Mobile Navigation">
+        <button
+          type="button"
+          className={`mobile-nav-btn ${!showInventory && !showHistory && !showSettings ? 'active' : ''}`}
+          onClick={() => {
+            setShowInventory(false);
+            setShowHistory(false);
+            setShowSettings(false);
+            setMobileView('items');
+          }}
+        >
+          <span className="mobile-nav-icon">🛒</span>
+          <span className="mobile-nav-label">Billing</span>
+        </button>
+        <button
+          type="button"
+          className="mobile-nav-btn"
+          onClick={() => navigate('/kds')}
+        >
+          <span className="mobile-nav-icon">🍳</span>
+          <span className="mobile-nav-label">Kitchen</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-nav-btn ${showInventory ? 'active' : ''}`}
+          onClick={() => {
+            setShowHistory(false);
+            setShowSettings(false);
+            setShowInventory(true);
+          }}
+        >
+          <span className="mobile-nav-icon">📦</span>
+          <span className="mobile-nav-label">Stock</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-nav-btn ${showHistory && historyInitialTab === 'reports' ? 'active' : ''}`}
+          onClick={() => {
+            setShowInventory(false);
+            setShowSettings(false);
+            setHistoryInitialTab('reports');
+            setShowHistory(true);
+          }}
+        >
+          <span className="mobile-nav-icon">📊</span>
+          <span className="mobile-nav-label">Reports</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-nav-btn ${showSettings ? 'active' : ''}`}
+          onClick={() => {
+            setShowInventory(false);
+            setShowHistory(false);
+            setShowSettings(true);
+          }}
+        >
+          <span className="mobile-nav-icon">⚙️</span>
+          <span className="mobile-nav-label">Settings</span>
+        </button>
+      </nav>
     </div>
   );
 }

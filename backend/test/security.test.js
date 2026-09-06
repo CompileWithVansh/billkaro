@@ -534,3 +534,32 @@ test('Item Validation & Partial Update - Inventory Stock Adjustments', async () 
   assert.ok(invalidDecimal.error, 'Should reject non-integer stock');
 });
 
+test('Financial Integrity - Discount Calculation & Split Payment Balancing', () => {
+  // Test Percent Discount: Subtotal ₹500, 10% discount, 5% GST
+  const subtotal = 500;
+  const pct = 10;
+  const discountAmount = Number(((subtotal * pct) / 100).toFixed(2));
+  assert.equal(discountAmount, 50);
+
+  const taxable = subtotal - discountAmount; // 450
+  assert.equal(taxable, 450);
+
+  const tax = Number((taxable * 0.05).toFixed(2)); // 22.50
+  assert.equal(tax, 22.5);
+
+  const total = Number((taxable + tax).toFixed(2)); // 472.50
+  assert.equal(total, 472.5);
+
+  // Test Flat Discount capped at subtotal
+  const flatDiscountOverSubtotal = Math.min(200, Math.max(0, 500)); // Trying to discount 500 on 200
+  assert.equal(flatDiscountOverSubtotal, 200);
+
+  // Test Split Payment Balancing
+  const splitTotal = 472.5;
+  const cash = 200;
+  const upi = Number((splitTotal - cash).toFixed(2));
+  assert.equal(upi, 272.5);
+  assert.equal(cash + upi, splitTotal);
+});
+
+

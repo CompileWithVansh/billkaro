@@ -14,6 +14,11 @@ interface Props {
   paymentMethod: string;
   customerName?: string;
   customerPhone?: string;
+  discountType?: 'percent' | 'flat' | null;
+  discountValue?: number;
+  discountAmount?: number;
+  cashAmount?: number | null;
+  upiAmount?: number | null;
 }
 
 export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
@@ -27,19 +32,25 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
   paymentMethod,
   customerName,
   customerPhone,
+  discountType,
+  discountValue,
+  discountAmount,
+  cashAmount,
+  upiAmount,
 }, ref) => {
   const [qrUrl, setQrUrl] = useState<string>('');
 
   useEffect(() => {
-    if (user.upiId && total > 0) {
-      const link = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${total.toFixed(2)}&cu=INR`;
+    const qrAmount = (paymentMethod === 'split' && upiAmount != null && upiAmount > 0) ? upiAmount : total;
+    if (user.upiId && qrAmount > 0) {
+      const link = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${qrAmount.toFixed(2)}&cu=INR`;
       QRCode.toDataURL(link, { width: 150, margin: 1 })
         .then(setQrUrl)
         .catch(() => {});
     } else {
       setQrUrl('');
     }
-  }, [user.upiId, user.payeeName, user.storeName, total]);
+  }, [user.upiId, user.payeeName, user.storeName, total, paymentMethod, upiAmount]);
 
   const dateStr = new Date().toLocaleString('en-IN', {
     dateStyle: 'medium',
@@ -133,9 +144,15 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
           <span>Subtotal</span>
           <span>₹{subtotal.toFixed(2)}</span>
         </div>
+        {discountAmount !== undefined && discountAmount > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#16a34a', fontWeight: 600 }}>
+            <span>Discount {discountType === 'percent' ? `(${discountValue}%)` : ''}</span>
+            <span>- ₹{discountAmount.toFixed(2)}</span>
+          </div>
+        )}
         {tax > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#64748b' }}>
-            <span>Tax</span>
+            <span>Tax ({user.taxPercent || 0}%)</span>
             <span>₹{tax.toFixed(2)}</span>
           </div>
         )}
@@ -176,8 +193,8 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
           textAlign: 'center',
           padding: '10px',
           borderRadius: '10px',
-          background: paymentMethod === 'udhaar' ? '#fee2e2' : '#e0f2fe',
-          color: paymentMethod === 'udhaar' ? '#991b1b' : '#0369a1',
+          background: paymentMethod === 'udhaar' ? '#fee2e2' : (paymentMethod === 'split' ? '#f3e8ff' : '#e0f2fe'),
+          color: paymentMethod === 'udhaar' ? '#991b1b' : (paymentMethod === 'split' ? '#6b21a8' : '#0369a1'),
           fontWeight: '700',
           fontSize: '13px',
           textTransform: 'uppercase',
@@ -186,6 +203,8 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
       >
         {paymentMethod === 'udhaar'
           ? 'STATUS: UDHAAR / UNPAID'
+          : paymentMethod === 'split'
+          ? `PAID VIA SPLIT (CASH: ₹${(cashAmount || 0).toFixed(2)} | UPI: ₹${(upiAmount || 0).toFixed(2)})`
           : `PAYMENT METHOD: ${paymentMethod.toUpperCase()}`}
       </div>
 

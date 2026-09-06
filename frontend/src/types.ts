@@ -63,6 +63,9 @@ export interface Bill {
   kdsStatus?: 'preparing' | 'ready';
   savedBillId?: number | string;  // persisted backend bill ID once generated / shared
   billShared?: boolean;           // whether bill was shared on WhatsApp awaiting payment
+  discountType?: 'percent' | 'flat' | null;
+  discountValue?: number;
+  discountAmount?: number;
 }
 
 export interface SavedBill {
@@ -72,9 +75,15 @@ export interface SavedBill {
   subtotal: number;
   tax: number;
   total: number;
-  paymentMethod: 'upi' | 'cash' | 'udhaar';
+  paymentMethod: 'upi' | 'cash' | 'udhaar' | 'split';
   customerName: string | null;
   customerPhone: string | null;
   status: 'paid' | 'unpaid';
+  discountType?: 'percent' | 'flat' | null;
+  discountValue?: number;
+  discountAmount?: number;
+  cashAmount?: number | null;
+  upiAmount?: number | null;
   createdAt: string;
 }
+

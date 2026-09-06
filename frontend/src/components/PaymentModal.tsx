@@ -3,16 +3,25 @@ import QRCode from 'qrcode';
 
 interface Props {
   amount: number;
+  subtotal?: number;
+  taxPercent?: number;
   upiId: string | null;
   payeeName: string | null;
   storeName: string;
   onClose: () => void;
   onConfirmPayment: (details: {
-    paymentMethod: 'upi' | 'cash' | 'udhaar';
+    paymentMethod: 'upi' | 'cash' | 'udhaar' | 'split';
     customerName?: string;
     customerPhone?: string;
     status: 'paid' | 'unpaid';
     action: 'save' | 'whatsapp' | 'print';
+    discountType?: 'percent' | 'flat' | null;
+    discountValue?: number;
+    discountAmount?: number;
+    cashAmount?: number | null;
+    upiAmount?: number | null;
+    finalTotal: number;
+    finalTax: number;
   }) => Promise<void> | void;
 }
 
@@ -29,31 +38,81 @@ function buildUpiLink(upiId: string, payeeName: string, amount: number) {
 
 export default function PaymentModal({
   amount,
+  subtotal,
+  taxPercent,
   upiId,
   payeeName,
   storeName,
   onClose,
   onConfirmPayment,
 }: Props) {
-  const [method, setMethod] = useState<'upi' | 'cash' | 'udhaar'>('upi');
+  const baseSubtotal = subtotal !== undefined ? subtotal : amount;
+  const taxRate = taxPercent || 0;
+
+  // Discount state
+  const [discountType, setDiscountType] = useState<'percent' | 'flat'>('percent');
+  const [discountInput, setDiscountInput] = useState<string>('');
+
+  // Payment method & split state
+  const [method, setMethod] = useState<'upi' | 'cash' | 'split' | 'udhaar'>('upi');
+  const [splitCash, setSplitCash] = useState<string>('');
+  const [splitUpi, setSplitUpi] = useState<string>('');
+
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [dataUrl, setDataUrl] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Authoritative calculation
+  const numDiscountInput = Number(discountInput) || 0;
+  let discountAmount = 0;
+  let effectiveDiscountValue = 0;
+
+  if (numDiscountInput > 0) {
+    if (discountType === 'percent') {
+      const pct = Math.min(100, Math.max(0, numDiscountInput));
+      discountAmount = Number(((baseSubtotal * pct) / 100).toFixed(2));
+      effectiveDiscountValue = pct;
+    } else {
+      const flat = Math.min(baseSubtotal, Math.max(0, numDiscountInput));
+      discountAmount = Number(flat.toFixed(2));
+      effectiveDiscountValue = flat;
+    }
+  }
+
+  const taxableSubtotal = Math.max(0, baseSubtotal - discountAmount);
+  const calculatedTax = Number((taxableSubtotal * (taxRate / 100)).toFixed(2));
+  const finalPayable = Number((taxableSubtotal + calculatedTax).toFixed(2));
+
+  function handleSplitCashChange(val: string) {
+    setSplitCash(val);
+    const num = Number(val) || 0;
+    const remaining = Math.max(0, Number((finalPayable - num).toFixed(2)));
+    setSplitUpi(remaining > 0 ? String(remaining) : '0');
+  }
+
+  function handleSplitUpiChange(val: string) {
+    setSplitUpi(val);
+    const num = Number(val) || 0;
+    const remaining = Math.max(0, Number((finalPayable - num).toFixed(2)));
+    setSplitCash(remaining > 0 ? String(remaining) : '0');
+  }
+
+  const qrAmount = method === 'split' ? (Number(splitUpi) > 0 ? Number(splitUpi) : finalPayable) : finalPayable;
+
   useEffect(() => {
-    if (method !== 'upi') return;
+    if (method !== 'upi' && method !== 'split') return;
     if (!upiId) {
       setError('No UPI ID set. Add one in Settings to generate a payment QR.');
       return;
     }
     setError('');
-    const link = buildUpiLink(upiId, payeeName || storeName, amount);
-    QRCode.toDataURL(link, { width: 320, margin: 1 })
+    const link = buildUpiLink(upiId, payeeName || storeName, qrAmount);
+    QRCode.toDataURL(link, { width: method === 'split' ? 200 : 288, margin: 1 })
       .then(setDataUrl)
       .catch(() => setError('Could not generate QR code.'));
-  }, [amount, upiId, payeeName, storeName, method]);
+  }, [qrAmount, upiId, payeeName, storeName, method]);
 
   async function handleComplete(action: 'save' | 'whatsapp' | 'print' = 'save') {
     if (isSubmitting) return;
@@ -61,6 +120,15 @@ export default function PaymentModal({
     if (method === 'udhaar') {
       if (!customerName.trim()) {
         setError('Please enter Customer Name for Udhaar credit.');
+        return;
+      }
+    }
+
+    if (method === 'split') {
+      const c = Number(splitCash) || 0;
+      const u = Number(splitUpi) || 0;
+      if (Math.abs(c + u - finalPayable) > 1) {
+        setError(`Split total (₹${(c + u).toFixed(2)}) must match bill total (₹${finalPayable.toFixed(2)})`);
         return;
       }
     }
@@ -73,6 +141,13 @@ export default function PaymentModal({
         customerPhone: customerPhone.trim(),
         status: method === 'udhaar' || action === 'whatsapp' ? 'unpaid' : 'paid',
         action,
+        discountType: discountAmount > 0 ? discountType : null,
+        discountValue: discountAmount > 0 ? effectiveDiscountValue : 0,
+        discountAmount,
+        cashAmount: method === 'split' ? (Number(splitCash) || 0) : (method === 'cash' ? finalPayable : null),
+        upiAmount: method === 'split' ? (Number(splitUpi) || 0) : (method === 'upi' ? finalPayable : null),
+        finalTotal: finalPayable,
+        finalTax: calculatedTax,
       });
     } catch (err) {
       console.error('Payment processing failed:', err);
@@ -82,15 +157,101 @@ export default function PaymentModal({
 
   return (
     <div className="modal-backdrop" onClick={isSubmitting ? undefined : onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <h3>Complete Payment</h3>
-        <div className="qr-amount">₹{amount.toFixed(2)}</div>
 
-        <div className="payment-tabs" style={{ display: 'flex', gap: 8, margin: '16px 0' }}>
+        {/* Discount Section */}
+        <div
+          style={{
+            background: 'var(--panel-2, #1e293b)',
+            border: '1px solid var(--border, #334155)',
+            borderRadius: 12,
+            padding: '10px 14px',
+            margin: '12px 0 14px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#94a3b8' }}>Apply Discount</span>
+            <div style={{ display: 'flex', gap: 4, background: '#0f172a', padding: 2, borderRadius: 8, border: '1px solid #334155' }}>
+              <button
+                type="button"
+                className={`btn sm-btn ${discountType === 'percent' ? 'primary' : 'ghost'}`}
+                style={{ fontSize: '0.78rem', padding: '2px 10px', minWidth: 36, fontWeight: 700 }}
+                onClick={() => setDiscountType('percent')}
+              >
+                %
+              </button>
+              <button
+                type="button"
+                className={`btn sm-btn ${discountType === 'flat' ? 'primary' : 'ghost'}`}
+                style={{ fontSize: '0.78rem', padding: '2px 10px', minWidth: 36, fontWeight: 700 }}
+                onClick={() => setDiscountType('flat')}
+              >
+                ₹
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={discountInput}
+              onChange={(e) => setDiscountInput(e.target.value)}
+              placeholder={discountType === 'percent' ? 'Enter discount % (e.g. 10)' : 'Enter discount ₹ (e.g. 50)'}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                fontSize: '16px',
+                borderRadius: 8,
+                background: '#0f172a',
+                border: discountAmount > 0 ? '1px solid #10b981' : '1px solid #334155',
+                color: '#f8fafc',
+              }}
+            />
+            {discountInput && (
+              <button
+                type="button"
+                className="btn sm-btn ghost"
+                style={{ fontSize: '0.78rem', color: '#94a3b8' }}
+                onClick={() => setDiscountInput('')}
+                title="Clear discount"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {discountAmount > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>
+              <span>Savings: -₹{discountAmount.toFixed(2)} ({discountType === 'percent' ? `${effectiveDiscountValue}%` : 'Flat'})</span>
+              {taxRate > 0 && <span style={{ color: '#94a3b8', fontWeight: 400 }}>Tax on ₹{taxableSubtotal.toFixed(2)}: ₹{calculatedTax.toFixed(2)}</span>}
+            </div>
+          )}
+        </div>
+
+        {/* Final Amount Display */}
+        <div style={{ textAlign: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Total Payable
+          </div>
+          <div className="qr-amount" style={{ margin: '4px 0', fontSize: '2rem', fontWeight: 800, color: '#38bdf8' }}>
+            ₹{finalPayable.toFixed(2)}
+          </div>
+          {discountAmount > 0 && (
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+              Subtotal: ₹{baseSubtotal.toFixed(2)} • Discount: -₹{discountAmount.toFixed(2)}
+            </div>
+          )}
+        </div>
+
+        {/* Payment Tabs */}
+        <div className="payment-tabs" style={{ display: 'flex', gap: 6, margin: '12px 0', flexWrap: 'wrap' }}>
           <button
             type="button"
-            className={`btn ${method === 'upi' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, opacity: isSubmitting ? 0.6 : 1 }}
+            className={`btn sm-btn ${method === 'upi' ? 'primary' : 'ghost'}`}
+            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1 }}
             disabled={isSubmitting}
             onClick={() => setMethod('upi')}
           >
@@ -98,8 +259,8 @@ export default function PaymentModal({
           </button>
           <button
             type="button"
-            className={`btn ${method === 'cash' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, opacity: isSubmitting ? 0.6 : 1 }}
+            className={`btn sm-btn ${method === 'cash' ? 'primary' : 'ghost'}`}
+            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1 }}
             disabled={isSubmitting}
             onClick={() => setMethod('cash')}
           >
@@ -107,8 +268,23 @@ export default function PaymentModal({
           </button>
           <button
             type="button"
-            className={`btn ${method === 'udhaar' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, opacity: isSubmitting ? 0.6 : 1 }}
+            className={`btn sm-btn ${method === 'split' ? 'primary' : 'ghost'}`}
+            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1 }}
+            disabled={isSubmitting}
+            onClick={() => {
+              setMethod('split');
+              if (!splitCash && !splitUpi) {
+                setSplitCash('');
+                setSplitUpi(String(finalPayable));
+              }
+            }}
+          >
+            💳 Split
+          </button>
+          <button
+            type="button"
+            className={`btn sm-btn ${method === 'udhaar' ? 'primary' : 'ghost'}`}
+            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1 }}
             disabled={isSubmitting}
             onClick={() => setMethod('udhaar')}
           >
@@ -118,15 +294,17 @@ export default function PaymentModal({
 
         {method === 'upi' && (
           <>
-            <div className="qr-note">Scan with any UPI App (Paytm/PhonePe/GPay)</div>
+            <div className="qr-note" style={{ fontSize: '0.8rem', color: '#94a3b8', textAlign: 'center', marginBottom: 8 }}>
+              Scan with any UPI App (Paytm / PhonePe / GPay)
+            </div>
             {error ? (
               <div className="error-box">{error}</div>
             ) : (
-              <div className="qr-box">
+              <div className="qr-box" style={{ textAlign: 'center' }}>
                 {dataUrl ? (
-                  <img src={dataUrl} alt="Payment QR" width={288} height={288} />
+                  <img src={dataUrl} alt="Payment QR" width={240} height={240} style={{ borderRadius: 8 }} />
                 ) : (
-                  <div style={{ color: '#111', padding: 40 }}>Generating QR…</div>
+                  <div style={{ color: '#94a3b8', padding: 40 }}>Generating QR…</div>
                 )}
               </div>
             )}
@@ -134,51 +312,101 @@ export default function PaymentModal({
         )}
 
         {method === 'cash' && (
-          <div style={{ textAlign: 'center', padding: '20px 0', fontSize: '1.1rem' }}>
-            Collect <strong>₹{amount.toFixed(2)}</strong> cash from customer.
+          <div style={{ textAlign: 'center', padding: '16px 0', fontSize: '1.05rem' }}>
+            Collect <strong style={{ color: '#4ade80' }}>₹{finalPayable.toFixed(2)}</strong> cash from customer.
+          </div>
+        )}
+
+        {method === 'split' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '10px 0', background: 'var(--panel-2, #1e293b)', padding: 12, borderRadius: 12, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '0.82rem', color: '#94a3b8', fontWeight: 600 }}>Split Bill (Cash + UPI)</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>💵 Cash Amount</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={splitCash}
+                  onChange={(e) => handleSplitCashChange(e.target.value)}
+                  placeholder="0.00"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#4ade80', fontWeight: 700, fontSize: '16px' }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>📱 UPI Amount (QR)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={splitUpi}
+                  onChange={(e) => handleSplitUpiChange(e.target.value)}
+                  placeholder="0.00"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#38bdf8', fontWeight: 700, fontSize: '16px' }}
+                />
+              </div>
+            </div>
+
+            {Number(splitUpi) > 0 && (
+              <div style={{ marginTop: 8, textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 4 }}>
+                  Scan UPI QR for remaining balance: <strong style={{ color: '#38bdf8' }}>₹{Number(splitUpi).toFixed(2)}</strong>
+                </div>
+                {error ? (
+                  <div className="error-box">{error}</div>
+                ) : dataUrl ? (
+                  <div className="qr-box" style={{ padding: 6, display: 'inline-block' }}>
+                    <img src={dataUrl} alt="Split UPI QR" width={180} height={180} style={{ borderRadius: 8 }} />
+                  </div>
+                ) : null}
+              </div>
+            )}
+            {error && <div className="error-box" style={{ color: '#ef4444', fontSize: '0.8rem' }}>{error}</div>}
           </div>
         )}
 
         {method === 'udhaar' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '12px 0' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '10px 0' }}>
             <div className="field">
-              <label>Customer Name *</label>
+              <label style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Customer Name *</label>
               <input
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="e.g. Ramesh Kumar"
                 disabled={isSubmitting}
                 autoFocus
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#f8fafc', fontSize: '16px' }}
               />
             </div>
             <div className="field">
-              <label>Customer Phone (optional for WhatsApp)</label>
+              <label style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Customer Phone (for 1-click WhatsApp Reminders)</label>
               <input
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 placeholder="e.g. 9876543210"
                 disabled={isSubmitting}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#f8fafc', fontSize: '16px' }}
               />
             </div>
-            {error && <div className="error-box">{error}</div>}
+            {error && <div className="error-box" style={{ color: '#ef4444', fontSize: '0.8rem' }}>{error}</div>}
           </div>
         )}
 
-        <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {/* Main Primary Green Save Button */}
           <button
             type="button"
             className="btn green block"
             style={{
-              fontSize: '1.05rem',
-              minHeight: '48px',
+              fontSize: '1rem',
+              minHeight: '46px',
               fontWeight: 700,
               opacity: isSubmitting ? 0.8 : 1,
               cursor: isSubmitting ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 10,
+              gap: 8,
             }}
             disabled={isSubmitting}
             onClick={() => handleComplete('save')}
@@ -191,7 +419,7 @@ export default function PaymentModal({
             ) : method === 'udhaar' ? (
               '📋 Save as Udhaar (Close Tab)'
             ) : (
-              '✅ Paid & Close Tab'
+              `✅ Paid ₹${finalPayable.toFixed(2)} & Close Tab`
             )}
           </button>
 
@@ -202,7 +430,7 @@ export default function PaymentModal({
               className="btn ghost"
               style={{
                 flex: 1.2,
-                fontSize: '0.85rem',
+                fontSize: '0.82rem',
                 color: '#22c55e',
                 borderColor: 'rgba(34, 197, 94, 0.4)',
                 opacity: isSubmitting ? 0.5 : 1,
@@ -212,14 +440,14 @@ export default function PaymentModal({
               onClick={() => handleComplete('whatsapp')}
               title="Share bill & QR on WhatsApp without closing the tab"
             >
-              📲 Share on WhatsApp (Keep Open)
+              📲 WhatsApp
             </button>
             <button
               type="button"
               className="btn ghost"
               style={{
                 flex: 0.8,
-                fontSize: '0.85rem',
+                fontSize: '0.82rem',
                 opacity: isSubmitting ? 0.5 : 1,
                 cursor: isSubmitting ? 'not-allowed' : 'pointer',
               }}
@@ -234,9 +462,9 @@ export default function PaymentModal({
             type="button"
             className="btn ghost block"
             style={{
-              marginTop: 4,
+              marginTop: 2,
               opacity: isSubmitting ? 0.4 : 0.6,
-              fontSize: '0.85rem',
+              fontSize: '0.82rem',
               cursor: isSubmitting ? 'not-allowed' : 'pointer',
             }}
             disabled={isSubmitting}

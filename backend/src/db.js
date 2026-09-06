@@ -93,6 +93,11 @@ export async function initDb() {
       customer_name  TEXT DEFAULT NULL,
       customer_phone TEXT DEFAULT NULL,
       status         TEXT NOT NULL DEFAULT 'paid',
+      discount_type  TEXT DEFAULT NULL,
+      discount_value REAL DEFAULT 0,
+      discount_amount REAL DEFAULT 0,
+      cash_amount    REAL DEFAULT NULL,
+      upi_amount     REAL DEFAULT NULL,
       created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
@@ -107,6 +112,11 @@ export async function initDb() {
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'upi';
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT NULL;
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_phone TEXT DEFAULT NULL;
+    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS discount_type TEXT DEFAULT NULL;
+    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS discount_value REAL DEFAULT 0;
+    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS discount_amount REAL DEFAULT 0;
+    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS cash_amount REAL DEFAULT NULL;
+    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS upi_amount REAL DEFAULT NULL;
 
     -- Generate KDS pairing PIN for any existing users with NULL kds_pin (6 digits)
     UPDATE billkaro_users 
@@ -117,6 +127,12 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS billkaro_items_user_idx ON billkaro_items(user_id);
     CREATE INDEX IF NOT EXISTS billkaro_bills_user_idx ON billkaro_bills(user_id);
     CREATE INDEX IF NOT EXISTS idx_billkaro_users_kds_pin ON billkaro_users(kds_pin);
+
+    -- High performance indexes for daily & monthly reports and top items aggregation
+    CREATE INDEX IF NOT EXISTS idx_bills_user_created ON billkaro_bills(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_bills_items_gin ON billkaro_bills USING GIN (items_json);
+    CREATE INDEX IF NOT EXISTS idx_bills_user_payment ON billkaro_bills(user_id, payment_method);
+    CREATE INDEX IF NOT EXISTS idx_bills_user_status_total ON billkaro_bills(user_id, status, total);
   `);
   console.log('BillKaro: Postgres schema ready.');
 }
@@ -284,10 +300,10 @@ export const itemsRepo = {
 
 // ---------------- Bills ----------------
 export const billsRepo = {
-  async create(userId, { label, items, subtotal, tax, total, paymentMethod, customerName, customerPhone, status }) {
+  async create(userId, { label, items, subtotal, tax, total, paymentMethod, customerName, customerPhone, status, discountType, discountValue, discountAmount, cashAmount, upiAmount }) {
     const { rows } = await getPool().query(
-      `INSERT INTO billkaro_bills (user_id, label, items_json, subtotal, tax, total, payment_method, customer_name, customer_phone, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      `INSERT INTO billkaro_bills (user_id, label, items_json, subtotal, tax, total, payment_method, customer_name, customer_phone, status, discount_type, discount_value, discount_amount, cash_amount, upi_amount)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
       [
         Number(userId),
         label || '',
@@ -299,6 +315,11 @@ export const billsRepo = {
         customerName || null,
         customerPhone || null,
         status || 'paid',
+        discountType || null,
+        Number(discountValue) || 0,
+        Number(discountAmount) || 0,
+        cashAmount != null ? Number(cashAmount) : null,
+        upiAmount != null ? Number(upiAmount) : null,
       ]
     );
     return rows[0];

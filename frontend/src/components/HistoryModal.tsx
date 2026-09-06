@@ -8,6 +8,7 @@ import { ReceiptCard } from './ReceiptCard';
 interface Props {
   user: User;
   items?: Item[];
+  initialTab?: 'bills' | 'reports';
   onClose: () => void;
 }
 
@@ -21,11 +22,12 @@ export function formatWhatsAppPhone(phone?: string | null): string {
   return digits;
 }
 
-export default function HistoryModal({ user, items, onClose }: Props) {
+export default function HistoryModal({ user, items, initialTab = 'bills', onClose }: Props) {
+  const [activeTab, setActiveTab] = useState<'bills' | 'reports'>(initialTab);
   const [bills, setBills] = useState<SavedBill[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
-  const [salesPeriod, setSalesPeriod] = useState<'today' | 'yesterday' | 'week' | 'range'>('today');
+  const [salesPeriod, setSalesPeriod] = useState<'today' | 'yesterday' | 'week' | 'month' | 'range'>('today');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [search, setSearch] = useState('');
@@ -111,11 +113,8 @@ export default function HistoryModal({ user, items, onClose }: Props) {
     const text = `*Pending Payment Reminder — ${user.storeName || 'BillKaro'}*\n\nHi ${custName},\nThis is a friendly payment reminder regarding your pending balance of *₹${amountStr}* from ${dateFormatted} (${invNum}).\n\n${paymentInfo}Thank you!`;
 
     if (targetPhone) {
-      // Directly opens chat with the customer (no contact saving required)
       window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`, '_blank');
     } else {
-      // If cashier has them saved in phone contacts and skipped typing:
-      // Opens WhatsApp contact selector with the pre-filled reminder message!
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
   }
@@ -134,11 +133,19 @@ export default function HistoryModal({ user, items, onClose }: Props) {
 
     let upiSection = '';
     if (user.upiId) {
-      const upiDeepLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${Number(b.total).toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Bill-${invNum}`)}`;
-      upiSection = `\n💳 *UPI ID:* \`${user.upiId}\`\n📲 *UPI Pay:* ${upiDeepLink}\n`;
+      const upiAmountToPay = (b.paymentMethod === 'split' && b.upiAmount != null && b.upiAmount > 0) ? b.upiAmount : b.total;
+      const upiDeepLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${Number(upiAmountToPay).toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Bill-${invNum}`)}`;
+      upiSection = `\n💳 *UPI ID:* \`${user.upiId}\`\n📲 *UPI Pay Link:* ${upiDeepLink}\n`;
     }
 
-    const textMessage = `*BillKaro Receipt — ${user.storeName || 'BillKaro'}*\nDate: ${new Date(b.createdAt).toLocaleDateString('en-IN')}\nInvoice: *${billDisplay}*${b.customerName ? `\nCustomer: ${b.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${Number(b.subtotal).toFixed(2)}${b.tax > 0 ? `\nTax (${user.taxPercent || 0}%): ₹${Number(b.tax).toFixed(2)}` : ''}\n*Total Amount: ₹${Number(b.total).toFixed(2)}*\nPayment: ${b.status === 'unpaid' ? 'UDHAAR / UNPAID' : `PAID via ${(b.paymentMethod || 'UPI').toUpperCase()}`}\n----------------------------------${upiSection}\nThank you for visiting us!`;
+    const discountText = b.discountAmount && Number(b.discountAmount) > 0
+      ? `\nDiscount (${b.discountType === 'percent' ? `${b.discountValue}%` : '₹' + b.discountValue}): -₹${Number(b.discountAmount).toFixed(2)}`
+      : '';
+    const splitText = b.paymentMethod === 'split'
+      ? `SPLIT (Cash: ₹${(Number(b.cashAmount) || 0).toFixed(2)} + UPI: ₹${(Number(b.upiAmount) || 0).toFixed(2)})`
+      : (b.paymentMethod || 'UPI').toUpperCase();
+
+    const textMessage = `*BillKaro Receipt — ${user.storeName || 'BillKaro'}*\nDate: ${new Date(b.createdAt).toLocaleDateString('en-IN')}\nInvoice: *${billDisplay}*${b.customerName ? `\nCustomer: ${b.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${Number(b.subtotal).toFixed(2)}${discountText}${b.tax > 0 ? `\nTax (${user.taxPercent || 0}%): ₹${Number(b.tax).toFixed(2)}` : ''}\n*Total Amount: ₹${Number(b.total).toFixed(2)}*\nPayment: ${b.status === 'unpaid' ? 'UDHAAR / UNPAID' : `PAID via ${splitText}`}\n----------------------------------${upiSection}\nThank you for visiting us!`;
 
     const openWhatsAppDirect = () => {
       if (targetPhone) {
@@ -189,7 +196,7 @@ export default function HistoryModal({ user, items, onClose }: Props) {
     }
   }
 
-  // Calculate Dates & Sales Metrics
+  // Calculate Dates & Filter Bills
   const today = new Date();
   const todayStr = today.toDateString();
 
@@ -200,7 +207,8 @@ export default function HistoryModal({ user, items, onClose }: Props) {
   const periodTitle = useMemo(() => {
     if (salesPeriod === 'today') return "TODAY'S";
     if (salesPeriod === 'yesterday') return "YESTERDAY'S";
-    if (salesPeriod === 'week') return "THIS WEEK'S";
+    if (salesPeriod === 'week') return "THIS WEEK'S (7D)";
+    if (salesPeriod === 'month') return "THIS MONTH'S (30D)";
     if (salesPeriod === 'range') {
       if (startDate && endDate) {
         const s = new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -225,6 +233,11 @@ export default function HistoryModal({ user, items, onClose }: Props) {
         weekAgo.setDate(weekAgo.getDate() - 7);
         return billDate >= weekAgo;
       }
+      if (salesPeriod === 'month') {
+        const monthAgo = new Date();
+        monthAgo.setDate(monthAgo.getDate() - 30);
+        return billDate >= monthAgo;
+      }
       if (salesPeriod === 'range') {
         if (!startDate && !endDate) return true;
         const bTime = billDate.getTime();
@@ -236,15 +249,163 @@ export default function HistoryModal({ user, items, onClose }: Props) {
     });
   }, [bills, salesPeriod, startDate, endDate, todayStr, yesterdayStr]);
 
-  const periodTotal = periodBills.reduce((s, b) => s + b.total, 0);
-  const periodCash = periodBills.filter((b) => b.paymentMethod === 'cash' && b.status === 'paid').reduce((s, b) => s + b.total, 0);
-  const periodUpi = periodBills.filter((b) => b.paymentMethod === 'upi' && b.status === 'paid').reduce((s, b) => s + b.total, 0);
-  const periodUdhaar = periodBills.filter((b) => b.status === 'unpaid').reduce((s, b) => s + b.total, 0);
+  // Financial & Operational Metrics (Accounting for Split Payments accurately)
+  const periodTotal = periodBills.reduce((s, b) => s + Number(b.total || 0), 0);
+  const periodCount = periodBills.length;
+  const avgOrderValue = periodCount > 0 ? periodTotal / periodCount : 0;
+  const periodDiscounts = periodBills.reduce((s, b) => s + (Number(b.discountAmount) || 0), 0);
+  const periodTax = periodBills.reduce((s, b) => s + (Number(b.tax) || 0), 0);
+
+  const periodCash = periodBills
+    .filter((b) => b.status === 'paid')
+    .reduce((s, b) => {
+      if (b.paymentMethod === 'cash') return s + Number(b.total || 0);
+      if (b.paymentMethod === 'split') return s + (Number(b.cashAmount) || 0);
+      return s;
+    }, 0);
+
+  const periodUpi = periodBills
+    .filter((b) => b.status === 'paid')
+    .reduce((s, b) => {
+      if (b.paymentMethod === 'upi') return s + Number(b.total || 0);
+      if (b.paymentMethod === 'split') return s + (Number(b.upiAmount) || 0);
+      return s;
+    }, 0);
+
+  const periodSplitBills = periodBills.filter((b) => b.paymentMethod === 'split' && b.status === 'paid');
+  const periodSplitCount = periodSplitBills.length;
+  const periodSplitTotal = periodSplitBills.reduce((s, b) => s + Number(b.total || 0), 0);
+
+  const periodUdhaar = periodBills.filter((b) => b.status === 'unpaid').reduce((s, b) => s + Number(b.total || 0), 0);
+  const periodUdhaarCount = periodBills.filter((b) => b.status === 'unpaid').length;
 
   const totalUdhaar = bills
     .filter((b) => b.status === 'unpaid')
-    .reduce((sum, b) => sum + b.total, 0);
+    .reduce((sum, b) => sum + Number(b.total || 0), 0);
 
+  // Top Selling Items Analytics
+  const topSellingItems = useMemo(() => {
+    const itemMap = new Map<string, { name: string; category?: string; qty: number; revenue: number }>();
+    periodBills.forEach((b) => {
+      (b.items || []).forEach((item) => {
+        const key = item.name.trim().toLowerCase();
+        const existing = itemMap.get(key) || {
+          name: item.name,
+          category: item.category,
+          qty: 0,
+          revenue: 0,
+        };
+        existing.qty += Number(item.qty || 1);
+        existing.revenue += (Number(item.price) || 0) * (Number(item.qty) || 1);
+        if (item.category && !existing.category) existing.category = item.category;
+        itemMap.set(key, existing);
+      });
+    });
+    const list = Array.from(itemMap.values());
+    list.sort((a, b) => b.qty - a.qty || b.revenue - a.revenue);
+    return list;
+  }, [periodBills]);
+
+  // Daily Sales Breakdown
+  const dailyBreakdown = useMemo(() => {
+    const dayMap = new Map<string, { dateStr: string; timestamp: number; count: number; total: number; cash: number; upi: number; udhaar: number }>();
+    periodBills.forEach((b) => {
+      const d = new Date(b.createdAt);
+      const dayKey = d.toISOString().slice(0, 10);
+      const dateStr = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      const existing = dayMap.get(dayKey) || {
+        dateStr,
+        timestamp: new Date(dayKey).getTime(),
+        count: 0,
+        total: 0,
+        cash: 0,
+        upi: 0,
+        udhaar: 0,
+      };
+      existing.count += 1;
+      const bTotal = Number(b.total || 0);
+      existing.total += bTotal;
+      if (b.status === 'unpaid') {
+        existing.udhaar += bTotal;
+      } else {
+        if (b.paymentMethod === 'cash') existing.cash += bTotal;
+        else if (b.paymentMethod === 'upi') existing.upi += bTotal;
+        else if (b.paymentMethod === 'split') {
+          existing.cash += Number(b.cashAmount || 0);
+          existing.upi += Number(b.upiAmount || 0);
+        }
+      }
+      dayMap.set(dayKey, existing);
+    });
+    return Array.from(dayMap.values()).sort((a, b) => b.timestamp - a.timestamp);
+  }, [periodBills]);
+
+  // CSV Report Export with UTF-8 BOM
+  function exportReportCsv() {
+    if (periodBills.length === 0) {
+      alert('No bills found in selected period to export.');
+      return;
+    }
+    const headers = [
+      'Invoice Number',
+      'Date',
+      'Time',
+      'Table / Label',
+      'Customer Name',
+      'Customer Phone',
+      'Payment Method',
+      'Cash Amount (Rs)',
+      'UPI Amount (Rs)',
+      'Subtotal (Rs)',
+      'Discount Type',
+      'Discount Value',
+      'Discount Amount (Rs)',
+      'Tax (Rs)',
+      'Grand Total (Rs)',
+      'Status',
+    ];
+
+    const escapeCsv = (str: string | number | null | undefined) => {
+      if (str === null || str === undefined) return '""';
+      const val = String(str).replace(/"/g, '""');
+      return `"${val}"`;
+    };
+
+    const rows = periodBills.map((b) => {
+      const d = new Date(b.createdAt);
+      return [
+        escapeCsv(formatInvoiceNumber(b.id)),
+        escapeCsv(d.toLocaleDateString('en-IN')),
+        escapeCsv(d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })),
+        escapeCsv(b.label || 'T1'),
+        escapeCsv(b.customerName || ''),
+        escapeCsv(b.customerPhone || ''),
+        escapeCsv(b.paymentMethod || 'upi'),
+        escapeCsv(b.paymentMethod === 'split' ? b.cashAmount : b.paymentMethod === 'cash' ? b.total : 0),
+        escapeCsv(b.paymentMethod === 'split' ? b.upiAmount : b.paymentMethod === 'upi' ? b.total : 0),
+        escapeCsv(Number(b.subtotal).toFixed(2)),
+        escapeCsv(b.discountType || 'none'),
+        escapeCsv(b.discountValue || 0),
+        escapeCsv(Number(b.discountAmount || 0).toFixed(2)),
+        escapeCsv(Number(b.tax || 0).toFixed(2)),
+        escapeCsv(Number(b.total).toFixed(2)),
+        escapeCsv(b.status || 'paid'),
+      ].join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `BillKaro_Sales_Report_${salesPeriod}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  // Filtered bills for the Ledger tab
   const filteredBills = useMemo(() => {
     return periodBills.filter((b) => {
       if (filter === 'paid' && b.status !== 'paid') return false;
@@ -264,11 +425,11 @@ export default function HistoryModal({ user, items, onClose }: Props) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal wide-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 880 }}>
-        {/* Header with Top-Right Close Button */}
+      <div className="modal wide-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920 }}>
+        {/* Header with Close Button */}
         <div className="modal-header">
           <div>
-            <h3>Bill History & Udhaar Ledger</h3>
+            <h3>History & Reports</h3>
             {totalUdhaar > 0 && (
               <div style={{ background: '#ef4444', color: '#fff', padding: '3px 10px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 700, display: 'inline-block', marginTop: 4 }}>
                 Total Udhaar Pending: ₹{totalUdhaar.toFixed(2)}
@@ -285,8 +446,28 @@ export default function HistoryModal({ user, items, onClose }: Props) {
           </button>
         </div>
 
-        {/* Sales Period Selector: Today, Yesterday, 7 Days, Date Range */}
-        <div className="period-selector-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+        {/* Tab Selector: Ledger vs Reports */}
+        <div style={{ display: 'flex', gap: 8, margin: '12px 0 14px', borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+          <button
+            type="button"
+            className={`pill-btn ${activeTab === 'bills' ? 'active' : ''}`}
+            onClick={() => setActiveTab('bills')}
+            style={{ fontSize: '0.85rem', padding: '6px 14px' }}
+          >
+            📜 Bills & Udhaar Ledger ({periodBills.length})
+          </button>
+          <button
+            type="button"
+            className={`pill-btn ${activeTab === 'reports' ? 'active' : ''}`}
+            onClick={() => setActiveTab('reports')}
+            style={{ fontSize: '0.85rem', padding: '6px 14px' }}
+          >
+            📊 Sales Reports & Analytics
+          </button>
+        </div>
+
+        {/* Shared Period Selector */}
+        <div className="period-selector-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
           <div className="period-pills" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             <button
               type="button"
@@ -311,16 +492,35 @@ export default function HistoryModal({ user, items, onClose }: Props) {
             </button>
             <button
               type="button"
+              className={`pill-btn ${salesPeriod === 'month' ? 'active' : ''}`}
+              onClick={() => { setSalesPeriod('month'); setStartDate(''); setEndDate(''); }}
+            >
+              📆 30 Days
+            </button>
+            <button
+              type="button"
               className={`pill-btn ${salesPeriod === 'range' ? 'active' : ''}`}
               onClick={() => { setSalesPeriod('range'); }}
             >
-              📆 Date Range
+              🔍 Date Range
             </button>
           </div>
 
-          {/* Date Range Inputs */}
+          {activeTab === 'reports' && (
+            <button
+              type="button"
+              className="btn sm-btn primary"
+              onClick={exportReportCsv}
+              style={{ fontSize: '0.82rem', padding: '6px 14px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              title="Download clean CSV report for Microsoft Excel"
+            >
+              📥 Export CSV
+            </button>
+          )}
+
+          {/* Custom Date Range Inputs */}
           {salesPeriod === 'range' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--bg-2)', padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--bg-2)', padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border)', width: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>From:</span>
                 <input
@@ -362,248 +562,149 @@ export default function HistoryModal({ user, items, onClose }: Props) {
           )}
         </div>
 
-        {/* Sales Summary Grid (Responsive 2x2 on mobile, 4-in-a-row on desktop) */}
-        <div className="sales-summary-grid">
-          <div className="sales-stat-card">
-            <div className="sales-stat-label">{periodTitle} TOTAL SALES</div>
-            <div className="sales-stat-val" style={{ color: '#38bdf8' }}>₹{periodTotal.toFixed(2)}</div>
-            <div className="sales-stat-sub">{periodBills.length} bill(s)</div>
-          </div>
-          <div className="sales-stat-card">
-            <div className="sales-stat-label">CASH COLLECTED</div>
-            <div className="sales-stat-val" style={{ color: '#4ade80' }}>₹{periodCash.toFixed(2)}</div>
-          </div>
-          <div className="sales-stat-card">
-            <div className="sales-stat-label">UPI COLLECTED</div>
-            <div className="sales-stat-val" style={{ color: '#60a5fa' }}>₹{periodUpi.toFixed(2)}</div>
-          </div>
-          <div className="sales-stat-card">
-            <div className="sales-stat-label">UDHAAR CREATED</div>
-            <div className="sales-stat-val" style={{ color: '#f87171' }}>₹{periodUdhaar.toFixed(2)}</div>
-          </div>
-        </div>
-
-        {/* Search & Filter Bar */}
-        <div className="history-filter-row">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search customer, phone, or INV #…"
-          />
-          <div className="history-filter-pills">
-            <button
-              type="button"
-              className={`btn sm-btn ${filter === 'all' ? 'primary' : 'ghost'}`}
-              onClick={() => setFilter('all')}
-            >
-              All ({periodBills.length})
-            </button>
-            <button
-              type="button"
-              className={`btn sm-btn ${filter === 'paid' ? 'primary' : 'ghost'}`}
-              onClick={() => setFilter('paid')}
-            >
-              Paid ({periodBills.filter((b) => b.status === 'paid').length})
-            </button>
-            <button
-              type="button"
-              className={`btn sm-btn ${filter === 'unpaid' ? 'danger' : 'ghost'}`}
-              onClick={() => setFilter('unpaid')}
-            >
-              Udhaar ({periodBills.filter((b) => b.status === 'unpaid').length})
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Loading bill history…</div>
-        ) : filteredBills.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No bills found.</div>
-        ) : (
-          <div style={{ maxHeight: 380, overflowY: 'auto' }}>
-            {/* Mobile Cards List (< 768px) */}
-            <div className="mobile-bills-list">
-              {filteredBills.map((b) => {
-                const displayTitle = getBillDisplayLabel(b);
-                const dateStr = new Date(b.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-                const timeStr = new Date(b.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-                return (
-                  <div key={b.id} className="history-bill-card">
-                    <div className="bill-card-top">
-                      <div>
-                        <div className="bill-card-inv">{displayTitle}</div>
-                        <div className="bill-card-date">{dateStr}, {timeStr}</div>
-                      </div>
-                      <div className="bill-card-badges">
-                        <span
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: 4,
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            background: b.status === 'paid' ? '#065f46' : '#991b1b',
-                            color: b.status === 'paid' ? '#6ee7b7' : '#fca5a5',
-                          }}
-                        >
-                          {b.status === 'paid' ? 'PAID' : 'UDHAAR'}
-                        </span>
-                        <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase' }}>
-                          {b.paymentMethod || 'UPI'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {(b.customerName || b.customerPhone) && (
-                      <div className="bill-card-customer">
-                        👤 {b.customerName || 'Customer'} {b.customerPhone ? `(${b.customerPhone})` : ''}
-                      </div>
-                    )}
-
-                    <div className="bill-card-items-preview">
-                      🛒 {b.items?.length || 0} item(s):{' '}
-                      {(b.items || []).map((i) => `${i.name} (x${i.qty})`).slice(0, 2).join(', ')}
-                      {(b.items?.length || 0) > 2 ? '…' : ''}
-                    </div>
-
-                    <div className="bill-card-bottom">
-                      <div className="bill-card-total">
-                        ₹{Number(b.total).toFixed(2)}
-                      </div>
-                      <div className="bill-card-actions">
-                        {b.status === 'unpaid' && (
-                          <>
-                            <button
-                              className="btn green sm-btn"
-                              disabled={updatingId === b.id}
-                              onClick={() => handleMarkPaid(b.id)}
-                              title="Mark Paid"
-                            >
-                              Mark Paid
-                            </button>
-                            <button
-                              className="btn ghost sm-btn"
-                              onClick={() => handleSendWhatsAppReminder(b)}
-                              title="Send 1-tap WhatsApp Reminder with QR & Pay Link"
-                              style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
-                            >
-                              📲 Remind
-                            </button>
-                          </>
-                        )}
-                        <button
-                          className="btn ghost sm-btn"
-                          style={{ color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.4)' }}
-                          disabled={sharingBillId === b.id}
-                          onClick={() => handleSendWhatsAppReceipt(b)}
-                          title="Share WhatsApp Receipt Image with QR"
-                        >
-                          {sharingBillId === b.id ? '⏳ Image…' : '📲 WhatsApp'}
-                        </button>
-                        <button
-                          className="btn ghost sm-btn"
-                          onClick={() =>
-                            printBill({
-                              bill: { id: String(b.id), label: displayTitle, lines: b.items || [] },
-                              user,
-                              items,
-                              subtotal: b.subtotal,
-                              tax: b.tax,
-                              total: b.total,
-                            })
-                          }
-                          title="Print Receipt"
-                        >
-                          Print
-                        </button>
-                        <button
-                          className="btn danger sm-btn"
-                          disabled={updatingId === b.id}
-                          onClick={() => handleDeleteBill(b.id, displayTitle)}
-                          title="Delete Bill"
-                        >
-                          🗑
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+        {/* TAB 1: BILLS & UDHAAR LEDGER */}
+        {activeTab === 'bills' && (
+          <>
+            {/* Sales Summary Grid (Responsive 2x2 on mobile, 4-in-a-row on desktop) */}
+            <div className="sales-summary-grid">
+              <div className="sales-stat-card">
+                <div className="sales-stat-label">{periodTitle} TOTAL SALES</div>
+                <div className="sales-stat-val" style={{ color: '#38bdf8' }}>₹{periodTotal.toFixed(2)}</div>
+                <div className="sales-stat-sub">{periodBills.length} bill(s)</div>
+              </div>
+              <div className="sales-stat-card">
+                <div className="sales-stat-label">CASH COLLECTED</div>
+                <div className="sales-stat-val" style={{ color: '#4ade80' }}>₹{periodCash.toFixed(2)}</div>
+              </div>
+              <div className="sales-stat-card">
+                <div className="sales-stat-label">UPI COLLECTED</div>
+                <div className="sales-stat-val" style={{ color: '#60a5fa' }}>₹{periodUpi.toFixed(2)}</div>
+              </div>
+              <div className="sales-stat-card">
+                <div className="sales-stat-label">UDHAAR CREATED</div>
+                <div className="sales-stat-val" style={{ color: '#f87171' }}>₹{periodUdhaar.toFixed(2)}</div>
+              </div>
             </div>
 
-            {/* Desktop / Tablet Table View (>= 768px) */}
-            <div className="desktop-bills-table" style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.85rem' }}>
-                    <th style={{ padding: '8px 12px' }}>Invoice</th>
-                    <th style={{ padding: '8px 12px' }}>Date</th>
-                    <th style={{ padding: '8px 12px' }}>Customer</th>
-                    <th style={{ padding: '8px 12px' }}>Method</th>
-                    <th style={{ padding: '8px 12px' }}>Total</th>
-                    <th style={{ padding: '8px 12px' }}>Status</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+            {/* Search & Filter Bar */}
+            <div className="history-filter-row">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search customer, phone, or INV #…"
+              />
+              <div className="history-filter-pills">
+                <button
+                  type="button"
+                  className={`btn sm-btn ${filter === 'all' ? 'primary' : 'ghost'}`}
+                  onClick={() => setFilter('all')}
+                >
+                  All ({periodBills.length})
+                </button>
+                <button
+                  type="button"
+                  className={`btn sm-btn ${filter === 'paid' ? 'primary' : 'ghost'}`}
+                  onClick={() => setFilter('paid')}
+                >
+                  Paid ({periodBills.filter((b) => b.status === 'paid').length})
+                </button>
+                <button
+                  type="button"
+                  className={`btn sm-btn ${filter === 'unpaid' ? 'danger' : 'ghost'}`}
+                  onClick={() => setFilter('unpaid')}
+                >
+                  Udhaar ({periodBills.filter((b) => b.status === 'unpaid').length})
+                </button>
+              </div>
+            </div>
+
+            {loading ? (
+              <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Loading bill history…</div>
+            ) : filteredBills.length === 0 ? (
+              <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No bills found.</div>
+            ) : (
+              <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+                {/* Mobile Cards List (< 768px) */}
+                <div className="mobile-bills-list">
                   {filteredBills.map((b) => {
                     const displayTitle = getBillDisplayLabel(b);
+                    const dateStr = new Date(b.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+                    const timeStr = new Date(b.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
                     return (
-                      <tr key={b.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                        <td style={{ padding: '10px 12px', fontWeight: 700, color: '#38bdf8' }}>
-                          {displayTitle}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                          {new Date(b.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })},{' '}
-                          {new Date(b.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                        </td>
-                        <td style={{ padding: '10px 12px' }}>
-                          {b.customerName || b.customerPhone ? (
-                            <div>
-                              <div style={{ fontWeight: 600 }}>{b.customerName || 'Customer'}</div>
-                              {b.customerPhone && <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{b.customerPhone}</div>}
-                            </div>
-                          ) : (
-                            <span style={{ color: '#64748b' }}>—</span>
-                          )}
-                        </td>
-                        <td style={{ padding: '10px 12px', textTransform: 'uppercase', fontSize: '0.8rem', color: '#94a3b8' }}>
-                          {b.paymentMethod || 'UPI'}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontWeight: 700 }}>
-                          ₹{Number(b.total).toFixed(2)}
-                        </td>
-                        <td style={{ padding: '10px 12px' }}>
-                          <span
-                            style={{
-                              padding: '3px 8px',
-                              borderRadius: 4,
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              background: b.status === 'paid' ? '#065f46' : '#991b1b',
-                              color: b.status === 'paid' ? '#6ee7b7' : '#fca5a5',
-                            }}
-                          >
-                            {b.status === 'paid' ? 'PAID' : 'UDHAAR'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <div key={b.id} className="history-bill-card">
+                        <div className="bill-card-top">
+                          <div>
+                            <div className="bill-card-inv">{displayTitle}</div>
+                            <div className="bill-card-date">{dateStr}, {timeStr}</div>
+                          </div>
+                          <div className="bill-card-badges">
+                            <span
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                background: b.status === 'paid' ? '#065f46' : '#991b1b',
+                                color: b.status === 'paid' ? '#6ee7b7' : '#fca5a5',
+                              }}
+                            >
+                              {b.status === 'paid' ? 'PAID' : 'UDHAAR'}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase' }}>
+                              {b.paymentMethod === 'split'
+                                ? `SPLIT (₹${b.cashAmount || 0} C + ₹${b.upiAmount || 0} U)`
+                                : (b.paymentMethod || 'UPI')}
+                            </span>
+                            {b.discountAmount != null && Number(b.discountAmount) > 0 && (
+                              <span
+                                style={{
+                                  padding: '2px 6px',
+                                  borderRadius: 4,
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  background: 'rgba(239, 68, 68, 0.15)',
+                                  color: '#f87171',
+                                }}
+                              >
+                                🏷️ -₹{Number(b.discountAmount).toFixed(0)} ({b.discountType === 'percent' ? `${b.discountValue}%` : 'Flat'})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {(b.customerName || b.customerPhone) && (
+                          <div className="bill-card-customer">
+                            👤 {b.customerName || 'Customer'} {b.customerPhone ? `(${b.customerPhone})` : ''}
+                          </div>
+                        )}
+
+                        <div className="bill-card-items-preview">
+                          🛒 {b.items?.length || 0} item(s):{' '}
+                          {(b.items || []).map((i) => `${i.name} (x${i.qty})`).slice(0, 2).join(', ')}
+                          {(b.items?.length || 0) > 2 ? '…' : ''}
+                        </div>
+
+                        <div className="bill-card-bottom">
+                          <div className="bill-card-total">
+                            ₹{Number(b.total).toFixed(2)}
+                          </div>
+                          <div className="bill-card-actions">
                             {b.status === 'unpaid' && (
                               <>
                                 <button
                                   className="btn green sm-btn"
                                   disabled={updatingId === b.id}
                                   onClick={() => handleMarkPaid(b.id)}
-                                  title="Mark Udhaar bill as paid"
+                                  title="Mark Paid"
                                 >
                                   Mark Paid
                                 </button>
                                 <button
                                   className="btn ghost sm-btn"
-                                  style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
                                   onClick={() => handleSendWhatsAppReminder(b)}
-                                  title="Send 1-tap WhatsApp reminder with QR"
+                                  title="Send 1-tap WhatsApp Reminder with QR & Pay Link"
+                                  style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
                                 >
                                   📲 Remind
                                 </button>
@@ -614,7 +715,7 @@ export default function HistoryModal({ user, items, onClose }: Props) {
                               style={{ color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.4)' }}
                               disabled={sharingBillId === b.id}
                               onClick={() => handleSendWhatsAppReceipt(b)}
-                              title="Share receipt image on WhatsApp"
+                              title="Share WhatsApp Receipt Image with QR"
                             >
                               {sharingBillId === b.id ? '⏳ Image…' : '📲 WhatsApp'}
                             </button>
@@ -628,8 +729,15 @@ export default function HistoryModal({ user, items, onClose }: Props) {
                                   subtotal: b.subtotal,
                                   tax: b.tax,
                                   total: b.total,
+                                  discountType: b.discountType,
+                                  discountValue: b.discountValue,
+                                  discountAmount: b.discountAmount,
+                                  paymentMethod: b.paymentMethod,
+                                  cashAmount: b.cashAmount,
+                                  upiAmount: b.upiAmount,
                                 })
                               }
+                              title="Print Receipt"
                             >
                               Print
                             </button>
@@ -637,17 +745,304 @@ export default function HistoryModal({ user, items, onClose }: Props) {
                               className="btn danger sm-btn"
                               disabled={updatingId === b.id}
                               onClick={() => handleDeleteBill(b.id, displayTitle)}
-                              title="Delete Bill Entry"
+                              title="Delete Bill"
                             >
                               🗑
                             </button>
                           </div>
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+
+                {/* Desktop / Tablet Table View (>= 768px) */}
+                <div className="desktop-bills-table" style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.85rem' }}>
+                        <th style={{ padding: '8px 12px' }}>Invoice</th>
+                        <th style={{ padding: '8px 12px' }}>Date</th>
+                        <th style={{ padding: '8px 12px' }}>Customer</th>
+                        <th style={{ padding: '8px 12px' }}>Payment</th>
+                        <th style={{ padding: '8px 12px' }}>Total</th>
+                        <th style={{ padding: '8px 12px' }}>Status</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredBills.map((b) => {
+                        const displayTitle = getBillDisplayLabel(b);
+                        return (
+                          <tr key={b.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#38bdf8' }}>
+                              {displayTitle}
+                            </td>
+                            <td style={{ padding: '10px 12px', fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                              {new Date(b.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })},{' '}
+                              {new Date(b.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              {b.customerName || b.customerPhone ? (
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{b.customerName || 'Customer'}</div>
+                                  {b.customerPhone && <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{b.customerPhone}</div>}
+                                </div>
+                              ) : (
+                                <span style={{ color: '#64748b' }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              <div style={{ textTransform: 'uppercase', fontSize: '0.8rem', fontWeight: 600 }}>
+                                {b.paymentMethod === 'split' ? (
+                                  <span style={{ color: '#38bdf8' }} title={`Cash: ₹${b.cashAmount || 0} | UPI: ₹${b.upiAmount || 0}`}>
+                                    SPLIT (₹{b.cashAmount || 0} C + ₹{b.upiAmount || 0} U)
+                                  </span>
+                                ) : (
+                                  b.paymentMethod || 'UPI'
+                                )}
+                              </div>
+                              {b.discountAmount != null && Number(b.discountAmount) > 0 && (
+                                <div style={{ fontSize: '0.72rem', color: '#f87171', fontWeight: 600 }}>
+                                  Disc: -₹{Number(b.discountAmount).toFixed(2)} ({b.discountType === 'percent' ? `${b.discountValue}%` : 'Flat'})
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 12px', fontWeight: 700 }}>
+                              ₹{Number(b.total).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              <span
+                                style={{
+                                  padding: '3px 8px',
+                                  borderRadius: 4,
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  background: b.status === 'paid' ? '#065f46' : '#991b1b',
+                                  color: b.status === 'paid' ? '#6ee7b7' : '#fca5a5',
+                                }}
+                              >
+                                {b.status === 'paid' ? 'PAID' : 'UDHAAR'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                {b.status === 'unpaid' && (
+                                  <>
+                                    <button
+                                      className="btn green sm-btn"
+                                      disabled={updatingId === b.id}
+                                      onClick={() => handleMarkPaid(b.id)}
+                                      title="Mark Udhaar bill as paid"
+                                    >
+                                      Mark Paid
+                                    </button>
+                                    <button
+                                      className="btn ghost sm-btn"
+                                      style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+                                      onClick={() => handleSendWhatsAppReminder(b)}
+                                      title="Send 1-tap WhatsApp reminder with QR"
+                                    >
+                                      📲 Remind
+                                    </button>
+                                  </>
+                                )}
+                                <button
+                                  className="btn ghost sm-btn"
+                                  style={{ color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.4)' }}
+                                  disabled={sharingBillId === b.id}
+                                  onClick={() => handleSendWhatsAppReceipt(b)}
+                                  title="Share receipt image on WhatsApp"
+                                >
+                                  {sharingBillId === b.id ? '⏳ Image…' : '📲 WhatsApp'}
+                                </button>
+                                <button
+                                  className="btn ghost sm-btn"
+                                  onClick={() =>
+                                    printBill({
+                                      bill: { id: String(b.id), label: displayTitle, lines: b.items || [] },
+                                      user,
+                                      items,
+                                      subtotal: b.subtotal,
+                                      tax: b.tax,
+                                      total: b.total,
+                                      discountType: b.discountType,
+                                      discountValue: b.discountValue,
+                                      discountAmount: b.discountAmount,
+                                      paymentMethod: b.paymentMethod,
+                                      cashAmount: b.cashAmount,
+                                      upiAmount: b.upiAmount,
+                                    })
+                                  }
+                                >
+                                  Print
+                                </button>
+                                <button
+                                  className="btn danger sm-btn"
+                                  disabled={updatingId === b.id}
+                                  onClick={() => handleDeleteBill(b.id, displayTitle)}
+                                  title="Delete Bill Entry"
+                                >
+                                  🗑
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* TAB 2: ADVANCED REPORTS & ANALYTICS */}
+        {activeTab === 'reports' && (
+          <div style={{ maxHeight: 480, overflowY: 'auto', paddingRight: 4 }}>
+            {/* KPI Stat Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
+              <div className="sales-stat-card">
+                <div className="sales-stat-label">REVENUE</div>
+                <div className="sales-stat-val" style={{ color: '#38bdf8' }}>₹{periodTotal.toFixed(2)}</div>
+                <div className="sales-stat-sub">{periodCount} orders</div>
+              </div>
+              <div className="sales-stat-card">
+                <div className="sales-stat-label">AVG ORDER VALUE</div>
+                <div className="sales-stat-val" style={{ color: '#a78bfa' }}>₹{avgOrderValue.toFixed(1)}</div>
+                <div className="sales-stat-sub">per order</div>
+              </div>
+              <div className="sales-stat-card">
+                <div className="sales-stat-label">DISCOUNTS GIVEN</div>
+                <div className="sales-stat-val" style={{ color: '#f87171' }}>₹{periodDiscounts.toFixed(2)}</div>
+                <div className="sales-stat-sub">total saved</div>
+              </div>
+              <div className="sales-stat-card">
+                <div className="sales-stat-label">GST / TAX</div>
+                <div className="sales-stat-val" style={{ color: '#fbbf24' }}>₹{periodTax.toFixed(2)}</div>
+                <div className="sales-stat-sub">tax collected</div>
+              </div>
+            </div>
+
+            {/* Payment Method Analysis Section */}
+            <div style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+              <h4 style={{ margin: '0 0 10px', fontSize: '0.9rem', color: '#e2e8f0', display: 'flex', justifyContent: 'space-between' }}>
+                <span>💳 Payment Breakdown</span>
+                <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 500 }}>Total: ₹{periodTotal.toFixed(2)}</span>
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+                <div style={{ background: 'var(--bg)', padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(74, 222, 128, 0.2)' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#4ade80', fontWeight: 700 }}>💵 CASH</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#4ade80' }}>₹{periodCash.toFixed(2)}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                    {periodTotal > 0 ? ((periodCash / periodTotal) * 100).toFixed(0) : 0}% of sales
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg)', padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(96, 165, 250, 0.2)' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#60a5fa', fontWeight: 700 }}>📱 UPI</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#60a5fa' }}>₹{periodUpi.toFixed(2)}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                    {periodTotal > 0 ? ((periodUpi / periodTotal) * 100).toFixed(0) : 0}% of sales
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg)', padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(56, 189, 248, 0.2)' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 700 }}>⚖️ SPLIT BILLS</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#38bdf8' }}>{periodSplitCount}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                    ₹{periodSplitTotal.toFixed(0)} split volume
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg)', padding: '10px 12px', borderRadius: 8, border: '1px solid rgba(248, 113, 113, 0.2)' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 700 }}>⚠️ UDHAAR</div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f87171' }}>₹{periodUdhaar.toFixed(2)}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                    {periodUdhaarCount} pending bill(s)
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Selling Items Ranking */}
+            <div style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+              <h4 style={{ margin: '0 0 10px', fontSize: '0.9rem', color: '#e2e8f0' }}>
+                🏆 Top Selling Items
+              </h4>
+              {topSellingItems.length === 0 ? (
+                <div style={{ color: 'var(--muted)', fontSize: '0.85rem', padding: '10px 0' }}>No item sales recorded in this period.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {topSellingItems.slice(0, 8).map((item, idx) => {
+                    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+                    const maxQty = topSellingItems[0].qty || 1;
+                    const percent = Math.min(100, Math.round((item.qty / maxQty) * 100));
+
+                    return (
+                      <div key={item.name} style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: '0.95rem', minWidth: 24 }}>{medal}</span>
+                            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#f8fafc' }}>{item.name}</span>
+                            {item.category && (
+                              <span style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 4, color: '#94a3b8' }}>
+                                {item.category}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontWeight: 800, color: '#38bdf8', fontSize: '0.9rem' }}>{item.qty} sold</span>
+                            <span style={{ fontSize: '0.78rem', color: '#94a3b8', marginLeft: 8 }}>(₹{item.revenue.toFixed(0)})</span>
+                          </div>
+                        </div>
+                        {/* Visual Progress Bar */}
+                        <div style={{ width: '100%', height: 4, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
+                          <div style={{ width: `${percent}%`, height: '100%', background: '#38bdf8', borderRadius: 2 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Daily Sales Breakdown Table */}
+            <div style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+              <h4 style={{ margin: '0 0 10px', fontSize: '0.9rem', color: '#e2e8f0' }}>
+                📅 Daily Sales Breakdown
+              </h4>
+              {dailyBreakdown.length === 0 ? (
+                <div style={{ color: 'var(--muted)', fontSize: '0.85rem', padding: '10px 0' }}>No daily sales recorded in this period.</div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', minWidth: 500, borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border)', color: '#94a3b8' }}>
+                        <th style={{ padding: '6px 8px' }}>Date</th>
+                        <th style={{ padding: '6px 8px' }}>Bills</th>
+                        <th style={{ padding: '6px 8px' }}>Cash</th>
+                        <th style={{ padding: '6px 8px' }}>UPI</th>
+                        <th style={{ padding: '6px 8px' }}>Udhaar</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Total Sales</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dailyBreakdown.map((row) => (
+                        <tr key={row.dateStr} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '8px 8px', fontWeight: 600 }}>{row.dateStr}</td>
+                          <td style={{ padding: '8px 8px', color: '#94a3b8' }}>{row.count}</td>
+                          <td style={{ padding: '8px 8px', color: '#4ade80' }}>₹{row.cash.toFixed(0)}</td>
+                          <td style={{ padding: '8px 8px', color: '#60a5fa' }}>₹{row.upi.toFixed(0)}</td>
+                          <td style={{ padding: '8px 8px', color: row.udhaar > 0 ? '#f87171' : '#94a3b8' }}>₹{row.udhaar.toFixed(0)}</td>
+                          <td style={{ padding: '8px 8px', fontWeight: 800, color: '#38bdf8', textAlign: 'right' }}>₹{row.total.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -680,6 +1075,11 @@ export default function HistoryModal({ user, items, onClose }: Props) {
               paymentMethod={activeReceiptBill.paymentMethod || 'upi'}
               customerName={activeReceiptBill.customerName || undefined}
               customerPhone={activeReceiptBill.customerPhone || undefined}
+              discountType={activeReceiptBill.discountType}
+              discountValue={activeReceiptBill.discountValue}
+              discountAmount={activeReceiptBill.discountAmount}
+              cashAmount={activeReceiptBill.cashAmount}
+              upiAmount={activeReceiptBill.upiAmount}
             />
           </div>
         )}

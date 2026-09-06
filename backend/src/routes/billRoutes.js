@@ -118,7 +118,20 @@ router.post(
   '/',
   requireUserRole,
   wrap(async (req, res) => {
-    const { label, items, paymentMethod, customerName, customerPhone, status, clientBillId } = req.body || {};
+    const {
+      label,
+      items,
+      paymentMethod,
+      customerName,
+      customerPhone,
+      status,
+      clientBillId,
+      discountType,
+      discountValue,
+      discountAmount,
+      cashAmount,
+      upiAmount,
+    } = req.body || {};
     if (!Array.isArray(items) || items.length === 0 || items.length > 200) {
       return res.status(400).json({ error: 'Bill must have between 1 and 200 items' });
     }
@@ -157,7 +170,7 @@ router.post(
       }
     }
 
-    // 2. Authoritative server-side financial math (prevents client-side total manipulation)
+    // 2. Authoritative server-side financial math with discount
     const user = await usersRepo.findById(userId);
     const taxPercent = user && typeof user.tax_percent === 'number' && user.tax_percent >= 0 ? user.tax_percent : 0;
 
@@ -165,8 +178,31 @@ router.post(
       (sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1),
       0
     );
-    const serverTax = Number((serverSubtotal * (taxPercent / 100)).toFixed(2));
-    const serverTotal = Number((serverSubtotal + serverTax).toFixed(2));
+
+    // Calculate authoritative discount
+    let cleanDiscountType = null;
+    let cleanDiscountValue = 0;
+    let cleanDiscountAmount = 0;
+
+    if (discountType === 'percent') {
+      const pct = Math.min(100, Math.max(0, Number(discountValue) || 0));
+      if (pct > 0) {
+        cleanDiscountType = 'percent';
+        cleanDiscountValue = pct;
+        cleanDiscountAmount = Number(((serverSubtotal * pct) / 100).toFixed(2));
+      }
+    } else if (discountType === 'flat' || Number(discountAmount) > 0) {
+      const flat = Math.min(serverSubtotal, Math.max(0, Number(discountValue) || Number(discountAmount) || 0));
+      if (flat > 0) {
+        cleanDiscountType = 'flat';
+        cleanDiscountValue = flat;
+        cleanDiscountAmount = Number(flat.toFixed(2));
+      }
+    }
+
+    const serverTaxable = Math.max(0, serverSubtotal - cleanDiscountAmount);
+    const serverTax = Number((serverTaxable * (taxPercent / 100)).toFixed(2));
+    const serverTotal = Number((serverTaxable + serverTax).toFixed(2));
 
     const now = Date.now();
 
@@ -192,9 +228,21 @@ router.post(
     const cleanCustomerName = sanitizeText(customerName) || null;
     const cleanCustomerPhone = sanitizePhone(customerPhone) || null;
     const cleanLabel = sanitizeText(label) || 'Bill';
-    const validPaymentMethods = ['upi', 'cash', 'card', 'udhaar', 'other'];
+    const validPaymentMethods = ['upi', 'cash', 'card', 'udhaar', 'split', 'other'];
     const cleanPaymentMethod = validPaymentMethods.includes(paymentMethod) ? paymentMethod : 'upi';
     const cleanStatus = status === 'unpaid' ? 'unpaid' : 'paid';
+
+    let cleanCash = null;
+    let cleanUpi = null;
+    if (cleanPaymentMethod === 'split') {
+      cleanCash = Math.max(0, Number(cashAmount) || 0);
+      cleanUpi = Math.max(0, Number(upiAmount) || 0);
+      if (cleanCash === 0 && cleanUpi === 0) {
+        cleanUpi = serverTotal;
+      } else if (Math.abs(cleanCash + cleanUpi - serverTotal) > 1) {
+        cleanUpi = Math.max(0, Number((serverTotal - cleanCash).toFixed(2)));
+      }
+    }
 
     const bill = await billsRepo.create(userId, {
       label: cleanLabel,
@@ -206,6 +254,11 @@ router.post(
       customerName: cleanCustomerName,
       customerPhone: cleanCustomerPhone,
       status: cleanStatus,
+      discountType: cleanDiscountType,
+      discountValue: cleanDiscountValue,
+      discountAmount: cleanDiscountAmount,
+      cashAmount: cleanPaymentMethod === 'split' ? cleanCash : null,
+      upiAmount: cleanPaymentMethod === 'split' ? cleanUpi : null,
     });
 
     // Auto-deduct stock for sold items
@@ -268,6 +321,11 @@ router.get(
         customerName: r.customer_name || null,
         customerPhone: r.customer_phone || null,
         status: r.status,
+        discountType: r.discount_type || null,
+        discountValue: Number(r.discount_value) || 0,
+        discountAmount: Number(r.discount_amount) || 0,
+        cashAmount: r.cash_amount != null ? Number(r.cash_amount) : null,
+        upiAmount: r.upi_amount != null ? Number(r.upi_amount) : null,
         createdAt: r.created_at,
       })),
     });
