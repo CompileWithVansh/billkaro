@@ -283,11 +283,24 @@ test('RFC 5321 Email Validation Regex', () => {
   assert.equal(EMAIL_REGEX.test('plainaddress'), false);
 });
 
-test('Helmet HTTP Security Headers', async () => {
+test('Helmet HTTP Security Headers & POS-Tailored CSP', async () => {
   const app = express();
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+          fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+          imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+          connectSrc: ["'self'", 'https:', 'wss:', 'ws:'],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+          frameAncestors: ["'self'"],
+        },
+      },
       crossOriginEmbedderPolicy: false,
     })
   );
@@ -309,6 +322,13 @@ test('Helmet HTTP Security Headers', async () => {
 
     // Express signature hidden
     assert.equal(res.headers.get('x-powered-by'), null);
+
+    // Content Security Policy header present and permits required POS directives
+    const csp = res.headers.get('content-security-policy');
+    assert.ok(csp, 'CSP header should be present');
+    assert.ok(csp.includes("img-src 'self' data: blob: https:"), 'CSP should allow QR (data:) and canvas (blob:) images');
+    assert.ok(csp.includes("connect-src 'self' https: wss: ws:"), 'CSP should allow WebSocket (ws/wss) connections for KDS');
+    assert.ok(csp.includes("object-src 'none'"), 'CSP should block unsafe plugins');
   } finally {
     server.close();
   }

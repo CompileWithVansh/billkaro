@@ -50,11 +50,25 @@ if (isProd && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16)) {
 // rate limiting / IPs work correctly.
 app.set('trust proxy', 1);
 
-// HTTP Security Headers (Safe Phase 1: CSP and COEP disabled to ensure
-// WebSockets, receipt canvas generation, and QR codes work without browser blocks)
+// HTTP Security Headers with POS-tailored Content Security Policy (CSP)
+// Explicitly permits dynamic UPI QR codes (data:), receipt canvas blobs (blob:),
+// Google Fonts, and live KDS real-time WebSockets (ws:, wss:)
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+        connectSrc: ["'self'", 'https:', 'wss:', 'ws:'],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'self'"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
   })
 );
