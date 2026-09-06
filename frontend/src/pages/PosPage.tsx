@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { toBlob } from 'html-to-image';
 
-import { api } from '../api';
+import { api, getToken } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { getItemDesc, formatInvoiceNumber, type Item, type Bill, type CartLine } from '../types';
 import { ReceiptCard } from '../components/ReceiptCard';
@@ -352,8 +352,10 @@ export default function PosPage() {
       ? import.meta.env.VITE_API_URL.replace('/api', '')
       : window.location.origin;
 
+    const token = getToken();
     const socket: Socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
+      auth: { token },
     });
 
     socket.on('connect', () => {

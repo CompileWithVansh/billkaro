@@ -64,3 +64,19 @@ export const apiLimiter = rateLimit({
   },
   validate: { xForwardedForHeader: false },
 });
+
+/**
+ * Rate limiter for AI menu scanning (Gemini Flash Vision).
+ * Configured to 15 scans per 10 minutes per IP to prevent quota exhaustion and cost spikes.
+ */
+export const scanMenuLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 15, // Max 15 scans per 10 minutes per IP
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  statusCode: 429,
+  message: {
+    error: 'Too many menu scans from this IP. Please wait a few minutes before scanning again.',
+  },
+  validate: { xForwardedForHeader: false },
+});

@@ -68,23 +68,6 @@ export async function initDb() {
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
-    -- Migrate existing tables: add columns that may not exist yet.
-    -- IF NOT EXISTS prevents errors on a fresh DB that already has them.
-    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS address TEXT;
-    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS phone   TEXT;
-    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS kds_pin TEXT;
-
-    ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS stock_quantity INTEGER DEFAULT NULL;
-    ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
-    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'upi';
-    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT NULL;
-    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_phone TEXT DEFAULT NULL;
-
-    -- Generate KDS pairing PIN for any existing users with NULL kds_pin (6 digits)
-    UPDATE billkaro_users 
-    SET kds_pin = LPAD(FLOOR(RANDOM() * 900000 + 100000)::TEXT, 6, '0')
-    WHERE kds_pin IS NULL;
-
     CREATE TABLE IF NOT EXISTS billkaro_items (
       id             SERIAL PRIMARY KEY,
       user_id        INTEGER NOT NULL REFERENCES billkaro_users(id) ON DELETE CASCADE,
@@ -113,8 +96,27 @@ export async function initDb() {
       created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Migrate existing tables: add columns that may not exist in earlier schemas.
+    -- IF NOT EXISTS prevents errors on databases that already have them.
+    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS address TEXT;
+    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS phone   TEXT;
+    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS kds_pin TEXT;
+
+    ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS stock_quantity INTEGER DEFAULT NULL;
+    ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'upi';
+    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT NULL;
+    ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_phone TEXT DEFAULT NULL;
+
+    -- Generate KDS pairing PIN for any existing users with NULL kds_pin (6 digits)
+    UPDATE billkaro_users 
+    SET kds_pin = LPAD(FLOOR(RANDOM() * 900000 + 100000)::TEXT, 6, '0')
+    WHERE kds_pin IS NULL;
+
+    -- Indices for fast querying and low-latency KDS PIN lookups
     CREATE INDEX IF NOT EXISTS billkaro_items_user_idx ON billkaro_items(user_id);
     CREATE INDEX IF NOT EXISTS billkaro_bills_user_idx ON billkaro_bills(user_id);
+    CREATE INDEX IF NOT EXISTS idx_billkaro_users_kds_pin ON billkaro_users(kds_pin);
   `);
   console.log('BillKaro: Postgres schema ready.');
 }

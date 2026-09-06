@@ -8,7 +8,10 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
 
+import os from 'os';
 import { initDb } from './db.js';
+import { verifyToken } from './auth.js';
+import { sanitizeText } from './utils/sanitize.js';
 import authRoutes from './routes/authRoutes.js';
 import itemRoutes from './routes/itemRoutes.js';
 import billRoutes, { updateActiveKdsStatus } from './routes/billRoutes.js';
@@ -58,8 +61,19 @@ app.use(
 
 // Secure CORS configuration
 app.use(cors(getCorsOptions(isProd)));
-app.use(express.json({ limit: '20mb' }));
-app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// Malformed JSON / entity too large parser error interceptor
+app.use((err, _req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ error: 'Malformed JSON payload' });
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Payload exceeds allowed limit' });
+  }
+  next(err);
+});
 
 // ---------------- Socket.io for Real-time KDS ----------------
 const io = new Server(httpServer, {
@@ -67,28 +81,48 @@ const io = new Server(httpServer, {
 });
 app.set('io', io);
 
-io.on('connection', (socket) => {
-  socket.on('join_store', (userId) => {
-    if (userId) {
-      socket.join(`store_${userId}`);
-    }
-  });
-
-  socket.on('kds:update-status', ({ userId, orderId, label, status }) => {
-    if (userId && orderId) {
-      const updated = updateActiveKdsStatus(userId, orderId, status);
-      io.to(`store_${userId}`).emit('kds:order-updated', {
-        orderId,
-        label,
-        status,
-        invoiceNumber: updated?.invoiceNumber,
-        customerName: updated?.customerName,
-      });
-    }
-  });
+// Authenticate socket connections via handshake auth token
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    return next(new Error('Authentication required'));
+  }
+  try {
+    const decoded = verifyToken(token);
+    socket.userId = decoded.sub;
+    socket.userRole = decoded.role || 'user';
+    next();
+  } catch {
+    return next(new Error('Invalid or expired authentication token'));
+  }
 });
 
-import os from 'os';
+io.on('connection', (socket) => {
+  // Bind strictly to authenticated user's store room
+  const storeRoom = `store_${socket.userId}`;
+  socket.join(storeRoom);
+
+  socket.on('join_store', () => {
+    // Keep connection strictly confined to authenticated store room
+    socket.join(storeRoom);
+  });
+
+  socket.on('kds:update-status', ({ orderId, label, status }) => {
+    if (!orderId || !status) return;
+    const validStatuses = ['preparing', 'ready'];
+    if (!validStatuses.includes(status)) return;
+
+    const cleanLabel = label ? sanitizeText(label).substring(0, 100) : '';
+    const updated = updateActiveKdsStatus(socket.userId, orderId, status);
+    io.to(storeRoom).emit('kds:order-updated', {
+      orderId,
+      label: cleanLabel,
+      status,
+      invoiceNumber: updated?.invoiceNumber,
+      customerName: updated?.customerName,
+    });
+  });
+});
 
 function getLocalNetworkIp() {
   const interfaces = os.networkInterfaces();

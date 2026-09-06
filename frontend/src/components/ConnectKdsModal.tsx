@@ -30,7 +30,8 @@ export default function ConnectKdsModal({ onClose }: Props) {
         }
       }
 
-      const storeIdParam = user?.id ? `?store=${user.id}&name=${encodeURIComponent(user.storeName || 'Store')}` : '';
+      const pinParam = user?.kdsPin ? `&pin=${user.kdsPin}` : '';
+      const storeIdParam = user?.id ? `?store=${user.id}&name=${encodeURIComponent(user.storeName || 'Store')}${pinParam}` : '';
       setTargetUrl(`${baseUrl}/kds${storeIdParam}`);
     }
 

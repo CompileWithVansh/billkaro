@@ -1,6 +1,6 @@
 import express from 'express';
 import { billsRepo, itemsRepo, usersRepo, getPool } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAuth, requireUserRole } from '../auth.js';
 import { sanitizeText, sanitizePhone } from '../utils/sanitize.js';
 
 const router = express.Router();
@@ -19,35 +19,46 @@ export function updateActiveKdsStatus(storeId, ticketId, status) {
   return null;
 }
 
-// Public KDS orders endpoint for paired kitchen screens (Only active kitchen tickets)
+// Authenticated KDS orders endpoint for paired kitchen screens (Scoped to authenticated store)
 router.get(
   '/kds/orders',
+  requireAuth,
   wrap(async (req, res) => {
     const storeId = req.query.store;
     if (!storeId) return res.status(400).json({ error: 'Store ID is required' });
+    if (String(req.userId) !== String(storeId)) {
+      return res.status(403).json({ error: 'Unauthorized access to this store tickets' });
+    }
     const tickets = activeKdsQueue.get(String(storeId)) || [];
     res.json({ bills: tickets });
   })
 );
 
-// Public/Paired endpoint to clear a ticket from active KDS queue when cook clears it
+// Authenticated endpoint to clear a ticket from active KDS queue when cook clears it
 router.post(
   '/kds/clear-ticket',
+  requireAuth,
   wrap(async (req, res) => {
     const { storeId, ticketId } = req.body || {};
-    if (storeId && ticketId) {
-      const existing = activeKdsQueue.get(String(storeId)) || [];
-      activeKdsQueue.set(String(storeId), existing.filter((t) => String(t.id) !== String(ticketId)));
+    if (!storeId || !ticketId) {
+      return res.status(400).json({ error: 'storeId and ticketId are required' });
     }
+    if (String(req.userId) !== String(storeId)) {
+      return res.status(403).json({ error: 'Unauthorized access to this store tickets' });
+    }
+    const existing = activeKdsQueue.get(String(storeId)) || [];
+    activeKdsQueue.set(String(storeId), existing.filter((t) => String(t.id) !== String(ticketId)));
     res.json({ ok: true });
   })
 );
 
+// All subsequent routes require full authentication
 router.use(requireAuth);
 
-// POST /api/bills/kds/send (Explicitly send current cart ticket to Kitchen Display)
+// POST /api/bills/kds/send (Explicitly send current cart ticket to Kitchen Display - Cashier only)
 router.post(
   '/kds/send',
+  requireUserRole,
   wrap(async (req, res) => {
     const { label, items, invoiceNumber, customerName } = req.body || {};
     if (!Array.isArray(items) || items.length === 0 || items.length > 200) {
@@ -57,11 +68,20 @@ router.post(
     const cleanLabel = sanitizeText(label) || 'Kitchen Ticket';
     const cleanInvoiceNumber = invoiceNumber ? sanitizeText(invoiceNumber) : null;
     const cleanCustomerName = customerName ? sanitizeText(customerName) : null;
+
+    // Sanitize item names and categories to prevent Stored XSS or hardware exploit characters on tickets
+    const cleanItems = items.map((l) => ({
+      ...l,
+      name: sanitizeText(l.name) || 'Item',
+      category: l.category ? sanitizeText(l.category) : undefined,
+      price: Number(l.price) || 0,
+      qty: Number(l.qty) || 1,
+    }));
     const orderTicket = {
       id: 'KDS-' + Date.now().toString().slice(-4),
       label: cleanLabel,
-      items,
-      total: items.reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.qty) || 1), 0),
+      items: cleanItems,
+      total: cleanItems.reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.qty) || 1), 0),
       createdAt: new Date().toISOString(),
       status: 'preparing',
       invoiceNumber: cleanInvoiceNumber,
@@ -93,9 +113,10 @@ setInterval(() => {
   }
 }, 60000).unref();
 
-// POST /api/bills (Payment checkout — strictly saves to database for history/reports; does NOT send to KDS)
+// POST /api/bills (Payment checkout — strictly saves to database for history/reports; Cashier only)
 router.post(
   '/',
+  requireUserRole,
   wrap(async (req, res) => {
     const { label, items, paymentMethod, customerName, customerPhone, status, clientBillId } = req.body || {};
     if (!Array.isArray(items) || items.length === 0 || items.length > 200) {
@@ -104,10 +125,19 @@ router.post(
 
     const userId = Number(req.userId);
 
+    // Sanitize item names and categories to prevent Stored XSS
+    const cleanItems = items.map((l) => ({
+      ...l,
+      name: sanitizeText(l.name) || 'Item',
+      category: l.category ? sanitizeText(l.category) : undefined,
+      price: typeof l.price === 'number' ? l.price : Number(l.price) || 0,
+      qty: typeof l.qty === 'number' ? l.qty : Number(l.qty) || 1,
+    }));
+
     // 1. Verify line items & prices (Catalog price lock against internal theft)
-    for (const line of items) {
-      const linePrice = typeof line.price === 'number' ? line.price : Number(line.price);
-      const lineQty = typeof line.qty === 'number' ? line.qty : Number(line.qty || 1);
+    for (const line of cleanItems) {
+      const linePrice = line.price;
+      const lineQty = line.qty;
 
       if (isNaN(linePrice) || linePrice < 0 || linePrice > 999999) {
         return res.status(400).json({ error: 'Item price must be between 0 and 999,999' });
@@ -131,7 +161,7 @@ router.post(
     const user = await usersRepo.findById(userId);
     const taxPercent = user && typeof user.tax_percent === 'number' && user.tax_percent >= 0 ? user.tax_percent : 0;
 
-    const serverSubtotal = items.reduce(
+    const serverSubtotal = cleanItems.reduce(
       (sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1),
       0
     );
@@ -151,7 +181,7 @@ router.post(
     }
 
     // 4. Rapid double-tap safeguard: check if identical order fingerprint was created in last 4 seconds
-    const fingerprintKey = `fp_${userId}_${serverTotal.toFixed(2)}_${items.length}_${items.map((i) => `${i.itemId || i.id}:${i.qty}`).sort().join(',')}`;
+    const fingerprintKey = `fp_${userId}_${serverTotal.toFixed(2)}_${cleanItems.length}_${cleanItems.map((i) => `${i.itemId || i.id}:${i.qty}`).sort().join(',')}`;
     const recentFp = recentBillsMap.get(fingerprintKey);
     if (recentFp && (now - recentFp.timestamp < 4000)) {
       console.log(`[Dedupe] Prevented rapid double-tap duplicate bill within 4s for user ${userId}`);
@@ -168,7 +198,7 @@ router.post(
 
     const bill = await billsRepo.create(userId, {
       label: cleanLabel,
-      items,
+      items: cleanItems,
       subtotal: serverSubtotal,
       tax: serverTax,
       total: serverTotal,
@@ -179,7 +209,7 @@ router.post(
     });
 
     // Auto-deduct stock for sold items
-    await itemsRepo.deductStock(userId, items);
+    await itemsRepo.deductStock(userId, cleanItems);
 
     // Format invoice number and auto-link to matching active KDS kitchen ticket
     const invNumber = 'INV-' + String(bill.id).padStart(4, '0');
@@ -220,9 +250,10 @@ router.post(
   })
 );
 
-// GET /api/bills
+// GET /api/bills (Cashier/Owner only)
 router.get(
   '/',
+  requireUserRole,
   wrap(async (req, res) => {
     const rows = await billsRepo.listByUser(req.userId);
     res.json({
@@ -243,23 +274,36 @@ router.get(
   })
 );
 
-// PUT /api/bills/:id/status (e.g. Mark Udhaar bill as paid)
+// PUT /api/bills/:id/status (Mark Udhaar bill as paid, etc. - Cashier/Owner only)
 router.put(
   '/:id/status',
+  requireUserRole,
   wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid bill ID' });
+    }
     const { status } = req.body || {};
-    if (!status) return res.status(400).json({ error: 'status is required' });
-    const bill = await billsRepo.updateStatus(req.params.id, req.userId, status);
+    const validStatuses = ['paid', 'unpaid', 'cancelled'];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Must be paid, unpaid, or cancelled.' });
+    }
+    const bill = await billsRepo.updateStatus(id, req.userId, status);
     if (!bill) return res.status(404).json({ error: 'Bill not found' });
     res.json({ ok: true, bill });
   })
 );
 
-// DELETE /api/bills/:id
+// DELETE /api/bills/:id (Cashier/Owner only)
 router.delete(
   '/:id',
+  requireUserRole,
   wrap(async (req, res) => {
-    const ok = await billsRepo.remove(req.params.id, req.userId);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid bill ID' });
+    }
+    const ok = await billsRepo.remove(id, req.userId);
     if (!ok) return res.status(404).json({ error: 'Bill not found' });
     res.json({ ok: true });
   })

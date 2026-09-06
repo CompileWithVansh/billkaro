@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../auth/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { api, getToken, setKdsToken } from '../api';
 
 interface KdsTicket {
   id: string | number;
@@ -49,6 +49,7 @@ export default function KdsPage() {
   const searchParams = new URLSearchParams(window.location.search);
   const queryStoreId = searchParams.get('store');
   const queryStoreName = searchParams.get('name');
+  const queryPin = searchParams.get('pin');
 
   const [pairedStoreId, setPairedStoreId] = useState<string | null>(() => {
     if (queryStoreId) {
@@ -64,6 +65,34 @@ export default function KdsPage() {
     return localStorage.getItem('billkaro_kds_store_name') || user?.storeName || 'Store';
   });
 
+  // Auto-pair if a valid 6-digit PIN is embedded in the URL (e.g. from QR code scan)
+  useEffect(() => {
+    if (queryPin && queryPin.length === 6) {
+      setPairingBusy(true);
+      api
+        .post('/auth/kds-pair', { pin: queryPin })
+        .then((res) => {
+          if (res.data?.ok && res.data?.storeId) {
+            const id = String(res.data.storeId);
+            const name = res.data.storeName || 'Store';
+            localStorage.setItem('billkaro_kds_store_id', id);
+            localStorage.setItem('billkaro_kds_store_name', name);
+            if (res.data.token) {
+              setKdsToken(res.data.token);
+            }
+            setPairedStoreId(id);
+            setPairedStoreName(name);
+          }
+        })
+        .catch((err) => {
+          console.warn('Auto-pair with PIN from QR code failed:', err);
+        })
+        .finally(() => {
+          setPairingBusy(false);
+        });
+    }
+  }, [queryPin]);
+
   async function handlePairWithPin() {
     if (pinInput.length !== 6) return;
     setPinError('');
@@ -75,6 +104,9 @@ export default function KdsPage() {
         const name = res.data.storeName || 'Store';
         localStorage.setItem('billkaro_kds_store_id', id);
         localStorage.setItem('billkaro_kds_store_name', name);
+        if (res.data.token) {
+          setKdsToken(res.data.token);
+        }
         setPairedStoreId(id);
         setPairedStoreName(name);
         setPinInput('');
@@ -103,6 +135,7 @@ export default function KdsPage() {
     if (!window.confirm('Disconnect this kitchen display from store?')) return;
     localStorage.removeItem('billkaro_kds_store_id');
     localStorage.removeItem('billkaro_kds_store_name');
+    setKdsToken(null);
     setPairedStoreId(null);
     setTickets([]);
   }
@@ -141,8 +174,10 @@ export default function KdsPage() {
       ? import.meta.env.VITE_API_URL.replace('/api', '')
       : window.location.origin;
 
+    const token = getToken();
     const socket: Socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
+      auth: { token },
     });
 
     setSocketInst(socket);

@@ -12,14 +12,20 @@ const baseURL =
 export const api = axios.create({ baseURL });
 
 const TOKEN_KEY = 'billkaro_token';
+const KDS_TOKEN_KEY = 'billkaro_kds_token';
 
 export function setToken(token: string | null) {
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+export function setKdsToken(token: string | null) {
+  if (token) localStorage.setItem(KDS_TOKEN_KEY, token);
+  else localStorage.removeItem(KDS_TOKEN_KEY);
+}
+
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(KDS_TOKEN_KEY);
 }
 
 // Attach JWT to every request.

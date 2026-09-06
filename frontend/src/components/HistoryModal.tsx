@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { toBlob } from 'html-to-image';
 import { api } from '../api';
 import { getItemDesc, formatInvoiceNumber, getBillDisplayLabel, type Item, type SavedBill, type User } from '../types';
 import { printBill } from './PrintReceipt';
+import { ReceiptCard } from './ReceiptCard';
 
 interface Props {
   user: User;
@@ -9,14 +11,29 @@ interface Props {
   onClose: () => void;
 }
 
+export function formatWhatsAppPhone(phone?: string | null): string {
+  if (!phone) return '';
+  let digits = phone.replace(/\D/g, '');
+  digits = digits.replace(/^0+/, '');
+  if (digits.length === 10) {
+    return `91${digits}`;
+  }
+  return digits;
+}
+
 export default function HistoryModal({ user, items, onClose }: Props) {
   const [bills, setBills] = useState<SavedBill[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
-  const [salesPeriod, setSalesPeriod] = useState<'today' | 'yesterday' | 'all' | 'custom'>('today');
-  const [customDate, setCustomDate] = useState<string>('');
+  const [salesPeriod, setSalesPeriod] = useState<'today' | 'yesterday' | 'week' | 'range'>('today');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
   const [search, setSearch] = useState('');
   const [updatingId, setUpdatingId] = useState<string | number | null>(null);
+
+  const [activeReceiptBill, setActiveReceiptBill] = useState<SavedBill | null>(null);
+  const [sharingBillId, setSharingBillId] = useState<string | number | null>(null);
+  const receiptRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadBills();
@@ -63,7 +80,23 @@ export default function HistoryModal({ user, items, onClose }: Props) {
     }
   }
 
-  function handleSendWhatsAppReminder(b: SavedBill) {
+  async function handleSendWhatsAppReminder(b: SavedBill) {
+    let targetPhone = formatWhatsAppPhone(b.customerPhone);
+
+    // If no phone was entered at checkout, give option to enter it OR skip to pick from phone contacts
+    if (!targetPhone) {
+      const entered = window.prompt(
+        `Enter WhatsApp number for ${b.customerName || 'Customer'} (or press Cancel to pick from your phone contacts):`,
+        ''
+      );
+      if (entered && entered.trim()) {
+        const clean = formatWhatsAppPhone(entered);
+        if (clean.length >= 10) {
+          targetPhone = clean;
+        }
+      }
+    }
+
     const custName = b.customerName || 'Customer';
     const dateFormatted = new Date(b.createdAt).toLocaleDateString('en-IN');
     const invNum = formatInvoiceNumber(b.id);
@@ -72,28 +105,23 @@ export default function HistoryModal({ user, items, onClose }: Props) {
     let paymentInfo = '';
     if (user.upiId) {
       const upiDeepLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${amountStr}&cu=INR&tn=${encodeURIComponent(`Bill-${invNum}`)}`;
-      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(upiDeepLink)}`;
-
-      paymentInfo = `💳 *Pay via UPI ID:* \`${user.upiId}\`\n\n📲 *1-Tap Pay Link:*\n${upiDeepLink}\n\n🖼️ *Scan QR Code to Pay:*\n${qrImageUrl}\n\n`;
+      paymentInfo = `💳 *Pay via UPI ID:* \`${user.upiId}\`\n\n📲 *1-Tap Pay Link:*\n${upiDeepLink}\n\n`;
     }
 
     const text = `*Pending Payment Reminder — ${user.storeName || 'BillKaro'}*\n\nHi ${custName},\nThis is a friendly payment reminder regarding your pending balance of *₹${amountStr}* from ${dateFormatted} (${invNum}).\n\n${paymentInfo}Thank you!`;
 
-    if (b.customerPhone && b.customerPhone.trim()) {
-      const cleanPhone = b.customerPhone.replace(/\D/g, '');
-      const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    if (targetPhone) {
+      // Directly opens chat with the customer (no contact saving required)
       window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`, '_blank');
-    } else if (navigator.share) {
-      navigator.share({
-        title: `Payment Reminder - ${b.customerName || 'Udhaar'} (${invNum})`,
-        text,
-      }).catch(() => {});
     } else {
+      // If cashier has them saved in phone contacts and skipped typing:
+      // Opens WhatsApp contact selector with the pre-filled reminder message!
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
   }
 
-  function handleSendWhatsAppReceipt(b: SavedBill) {
+  async function handleSendWhatsAppReceipt(b: SavedBill) {
+    const targetPhone = formatWhatsAppPhone(b.customerPhone);
     const invNum = formatInvoiceNumber(b.id);
     const billDisplay = getBillDisplayLabel(b);
     const itemsList = (b.items || [])
@@ -107,23 +135,57 @@ export default function HistoryModal({ user, items, onClose }: Props) {
     let upiSection = '';
     if (user.upiId) {
       const upiDeepLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${Number(b.total).toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Bill-${invNum}`)}`;
-      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(upiDeepLink)}`;
-      upiSection = `\n💳 *UPI ID:* \`${user.upiId}\`\n🖼️ *Scan QR Code:*\n${qrImageUrl}\n`;
+      upiSection = `\n💳 *UPI ID:* \`${user.upiId}\`\n📲 *UPI Pay:* ${upiDeepLink}\n`;
     }
 
-    const text = `*BillKaro Receipt — ${user.storeName || 'BillKaro'}*\nDate: ${new Date(b.createdAt).toLocaleDateString('en-IN')}\nInvoice: *${billDisplay}*${b.customerName ? `\nCustomer: ${b.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${Number(b.subtotal).toFixed(2)}${b.tax > 0 ? `\nTax (${user.taxPercent || 0}%): ₹${Number(b.tax).toFixed(2)}` : ''}\n*Total Amount: ₹${Number(b.total).toFixed(2)}*\nPayment: ${b.status === 'unpaid' ? 'UDHAAR / UNPAID' : `PAID via ${(b.paymentMethod || 'UPI').toUpperCase()}`}\n----------------------------------${upiSection}\nThank you for visiting us!`;
+    const textMessage = `*BillKaro Receipt — ${user.storeName || 'BillKaro'}*\nDate: ${new Date(b.createdAt).toLocaleDateString('en-IN')}\nInvoice: *${billDisplay}*${b.customerName ? `\nCustomer: ${b.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${Number(b.subtotal).toFixed(2)}${b.tax > 0 ? `\nTax (${user.taxPercent || 0}%): ₹${Number(b.tax).toFixed(2)}` : ''}\n*Total Amount: ₹${Number(b.total).toFixed(2)}*\nPayment: ${b.status === 'unpaid' ? 'UDHAAR / UNPAID' : `PAID via ${(b.paymentMethod || 'UPI').toUpperCase()}`}\n----------------------------------${upiSection}\nThank you for visiting us!`;
 
-    if (b.customerPhone && b.customerPhone.trim()) {
-      const cleanPhone = b.customerPhone.replace(/\D/g, '');
-      const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-      window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`, '_blank');
-    } else if (navigator.share) {
-      navigator.share({
-        title: `BillKaro Receipt - ${billDisplay}`,
-        text,
-      }).catch(() => {});
-    } else {
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    const openWhatsAppDirect = () => {
+      if (targetPhone) {
+        window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(textMessage)}`, '_blank');
+      } else {
+        window.open(`https://wa.me/?text=${encodeURIComponent(textMessage)}`, '_blank');
+      }
+    };
+
+    try {
+      setSharingBillId(b.id);
+      setActiveReceiptBill(b);
+
+      // Microtick to render ReceiptCard & QR code canvas
+      await new Promise((r) => setTimeout(r, 180));
+
+      if (receiptRef.current) {
+        const blob = await toBlob(receiptRef.current, { pixelRatio: 2 });
+        if (blob) {
+          const file = new File([blob], `${invNum}_Receipt.png`, { type: 'image/png' });
+
+          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              title: `BillKaro Receipt - ${invNum}`,
+              text: textMessage,
+              files: [file],
+            });
+          } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${invNum}_Receipt.png`;
+            a.click();
+            URL.revokeObjectURL(url);
+            openWhatsAppDirect();
+          }
+        } else {
+          openWhatsAppDirect();
+        }
+      } else {
+        openWhatsAppDirect();
+      }
+    } catch (err) {
+      console.warn('Receipt image generation failed:', err);
+      openWhatsAppDirect();
+    } finally {
+      setSharingBillId(null);
     }
   }
 
@@ -135,26 +197,44 @@ export default function HistoryModal({ user, items, onClose }: Props) {
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toDateString();
 
-  const periodTitle =
-    salesPeriod === 'today'
-      ? "TODAY'S"
-      : salesPeriod === 'yesterday'
-      ? "YESTERDAY'S"
-      : salesPeriod === 'custom' && customDate
-      ? new Date(customDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }).toUpperCase()
-      : 'ALL TIME';
+  const periodTitle = useMemo(() => {
+    if (salesPeriod === 'today') return "TODAY'S";
+    if (salesPeriod === 'yesterday') return "YESTERDAY'S";
+    if (salesPeriod === 'week') return "THIS WEEK'S";
+    if (salesPeriod === 'range') {
+      if (startDate && endDate) {
+        const s = new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+        const e = new Date(endDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+        return `${s} – ${e}`.toUpperCase();
+      }
+      if (startDate) return `FROM ${new Date(startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`.toUpperCase();
+      if (endDate) return `UNTIL ${new Date(endDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`.toUpperCase();
+      return 'DATE RANGE';
+    }
+    return "TODAY'S";
+  }, [salesPeriod, startDate, endDate]);
 
   const periodBills = useMemo(() => {
     return bills.filter((b) => {
-      const dStr = new Date(b.createdAt).toDateString();
+      const billDate = new Date(b.createdAt);
+      const dStr = billDate.toDateString();
       if (salesPeriod === 'today') return dStr === todayStr;
       if (salesPeriod === 'yesterday') return dStr === yesterdayStr;
-      if (salesPeriod === 'custom' && customDate) {
-        return dStr === new Date(customDate + 'T00:00:00').toDateString();
+      if (salesPeriod === 'week') {
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return billDate >= weekAgo;
       }
-      return true; // 'all'
+      if (salesPeriod === 'range') {
+        if (!startDate && !endDate) return true;
+        const bTime = billDate.getTime();
+        const start = startDate ? new Date(startDate + 'T00:00:00').getTime() : 0;
+        const end = endDate ? new Date(endDate + 'T23:59:59').getTime() : Infinity;
+        return bTime >= start && bTime <= end;
+      }
+      return dStr === todayStr;
     });
-  }, [bills, salesPeriod, customDate, todayStr, yesterdayStr]);
+  }, [bills, salesPeriod, startDate, endDate, todayStr, yesterdayStr]);
 
   const periodTotal = periodBills.reduce((s, b) => s + b.total, 0);
   const periodCash = periodBills.filter((b) => b.paymentMethod === 'cash' && b.status === 'paid').reduce((s, b) => s + b.total, 0);
@@ -165,20 +245,22 @@ export default function HistoryModal({ user, items, onClose }: Props) {
     .filter((b) => b.status === 'unpaid')
     .reduce((sum, b) => sum + b.total, 0);
 
-  const filteredBills = bills.filter((b) => {
-    if (filter === 'paid' && b.status !== 'paid') return false;
-    if (filter === 'unpaid' && b.status !== 'unpaid') return false;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      const inv = formatInvoiceNumber(b.id).toLowerCase();
-      const nameMatch = b.customerName?.toLowerCase().includes(q);
-      const phoneMatch = b.customerPhone?.includes(q);
-      const labelMatch = b.label?.toLowerCase().includes(q);
-      const invMatch = inv.includes(q);
-      return nameMatch || phoneMatch || labelMatch || invMatch;
-    }
-    return true;
-  });
+  const filteredBills = useMemo(() => {
+    return periodBills.filter((b) => {
+      if (filter === 'paid' && b.status !== 'paid') return false;
+      if (filter === 'unpaid' && b.status !== 'unpaid') return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const inv = formatInvoiceNumber(b.id).toLowerCase();
+        const nameMatch = b.customerName?.toLowerCase().includes(q);
+        const phoneMatch = b.customerPhone?.includes(q);
+        const labelMatch = b.label?.toLowerCase().includes(q);
+        const invMatch = inv.includes(q);
+        return nameMatch || phoneMatch || labelMatch || invMatch;
+      }
+      return true;
+    });
+  }, [periodBills, filter, search]);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -203,41 +285,81 @@ export default function HistoryModal({ user, items, onClose }: Props) {
           </button>
         </div>
 
-        {/* Sales Period Selector: Today, Yesterday, All Time, Custom Date */}
-        <div className="period-selector-row">
-          <div className="period-pills">
+        {/* Sales Period Selector: Today, Yesterday, 7 Days, Date Range */}
+        <div className="period-selector-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+          <div className="period-pills" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             <button
               type="button"
               className={`pill-btn ${salesPeriod === 'today' ? 'active' : ''}`}
-              onClick={() => { setSalesPeriod('today'); setCustomDate(''); }}
+              onClick={() => { setSalesPeriod('today'); setStartDate(''); setEndDate(''); }}
             >
               📅 Today
             </button>
             <button
               type="button"
               className={`pill-btn ${salesPeriod === 'yesterday' ? 'active' : ''}`}
-              onClick={() => { setSalesPeriod('yesterday'); setCustomDate(''); }}
+              onClick={() => { setSalesPeriod('yesterday'); setStartDate(''); setEndDate(''); }}
             >
               ⏪ Yesterday
             </button>
             <button
               type="button"
-              className={`pill-btn ${salesPeriod === 'all' ? 'active' : ''}`}
-              onClick={() => { setSalesPeriod('all'); setCustomDate(''); }}
+              className={`pill-btn ${salesPeriod === 'week' ? 'active' : ''}`}
+              onClick={() => { setSalesPeriod('week'); setStartDate(''); setEndDate(''); }}
             >
-              🌐 All Time
+              🗓️ 7 Days
+            </button>
+            <button
+              type="button"
+              className={`pill-btn ${salesPeriod === 'range' ? 'active' : ''}`}
+              onClick={() => { setSalesPeriod('range'); }}
+            >
+              📆 Date Range
             </button>
           </div>
-          <input
-            type="date"
-            className="period-date-input"
-            value={customDate}
-            onChange={(e) => {
-              setCustomDate(e.target.value);
-              if (e.target.value) setSalesPeriod('custom');
-            }}
-            title="Pick specific date"
-          />
+
+          {/* Date Range Inputs */}
+          {salesPeriod === 'range' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--bg-2)', padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>From:</span>
+                <input
+                  type="date"
+                  className="period-date-input"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setSalesPeriod('range');
+                  }}
+                  title="Start date"
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>To:</span>
+                <input
+                  type="date"
+                  className="period-date-input"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setSalesPeriod('range');
+                  }}
+                  title="End date"
+                />
+              </div>
+              {(startDate || endDate) && (
+                <button
+                  type="button"
+                  className="btn sm-btn ghost"
+                  style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+                  onClick={() => { setStartDate(''); setEndDate(''); }}
+                  title="Reset Range"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Sales Summary Grid (Responsive 2x2 on mobile, 4-in-a-row on desktop) */}
@@ -274,21 +396,21 @@ export default function HistoryModal({ user, items, onClose }: Props) {
               className={`btn sm-btn ${filter === 'all' ? 'primary' : 'ghost'}`}
               onClick={() => setFilter('all')}
             >
-              All ({bills.length})
+              All ({periodBills.length})
             </button>
             <button
               type="button"
               className={`btn sm-btn ${filter === 'paid' ? 'primary' : 'ghost'}`}
               onClick={() => setFilter('paid')}
             >
-              Paid ({bills.filter((b) => b.status === 'paid').length})
+              Paid ({periodBills.filter((b) => b.status === 'paid').length})
             </button>
             <button
               type="button"
               className={`btn sm-btn ${filter === 'unpaid' ? 'danger' : 'ghost'}`}
               onClick={() => setFilter('unpaid')}
             >
-              Udhaar ({bills.filter((b) => b.status === 'unpaid').length})
+              Udhaar ({periodBills.filter((b) => b.status === 'unpaid').length})
             </button>
           </div>
         </div>
@@ -372,10 +494,11 @@ export default function HistoryModal({ user, items, onClose }: Props) {
                         <button
                           className="btn ghost sm-btn"
                           style={{ color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.4)' }}
+                          disabled={sharingBillId === b.id}
                           onClick={() => handleSendWhatsAppReceipt(b)}
-                          title="Share WhatsApp Receipt"
+                          title="Share WhatsApp Receipt Image with QR"
                         >
-                          📲 WhatsApp
+                          {sharingBillId === b.id ? '⏳ Image…' : '📲 WhatsApp'}
                         </button>
                         <button
                           className="btn ghost sm-btn"
@@ -453,7 +576,7 @@ export default function HistoryModal({ user, items, onClose }: Props) {
                         <td style={{ padding: '10px 12px' }}>
                           <span
                             style={{
-                              padding: '2px 8px',
+                              padding: '3px 8px',
                               borderRadius: 4,
                               fontSize: '0.75rem',
                               fontWeight: 700,
@@ -465,7 +588,7 @@ export default function HistoryModal({ user, items, onClose }: Props) {
                           </span>
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                             {b.status === 'unpaid' && (
                               <>
                                 <button
@@ -489,10 +612,11 @@ export default function HistoryModal({ user, items, onClose }: Props) {
                             <button
                               className="btn ghost sm-btn"
                               style={{ color: '#22c55e', borderColor: 'rgba(34, 197, 94, 0.4)' }}
+                              disabled={sharingBillId === b.id}
                               onClick={() => handleSendWhatsAppReceipt(b)}
-                              title="Share receipt on WhatsApp"
+                              title="Share receipt image on WhatsApp"
                             >
-                              📲 WhatsApp
+                              {sharingBillId === b.id ? '⏳ Image…' : '📲 WhatsApp'}
                             </button>
                             <button
                               className="btn ghost sm-btn"
@@ -525,6 +649,38 @@ export default function HistoryModal({ user, items, onClose }: Props) {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* Hidden off-screen ReceiptCard for WhatsApp image snapshot */}
+        {activeReceiptBill && (
+          <div style={{ position: 'fixed', left: '-9999px', top: '-9999px', zIndex: -100 }}>
+            <ReceiptCard
+              ref={receiptRef}
+              bill={{
+                id: String(activeReceiptBill.id),
+                label: getBillDisplayLabel(activeReceiptBill),
+                lines: (activeReceiptBill.items || []).map((l, i) => ({
+                  lineId: `hist_line_${i}`,
+                  itemId: l.itemId ?? null,
+                  name: l.name,
+                  price: l.price,
+                  qty: l.qty,
+                  category: l.category,
+                  description: l.description,
+                })),
+                savedBillId: activeReceiptBill.id,
+              }}
+              user={user}
+              items={items}
+              invoiceNumber={formatInvoiceNumber(activeReceiptBill.id)}
+              subtotal={Number(activeReceiptBill.subtotal)}
+              tax={Number(activeReceiptBill.tax)}
+              total={Number(activeReceiptBill.total)}
+              paymentMethod={activeReceiptBill.paymentMethod || 'upi'}
+              customerName={activeReceiptBill.customerName || undefined}
+              customerPhone={activeReceiptBill.customerPhone || undefined}
+            />
           </div>
         )}
 

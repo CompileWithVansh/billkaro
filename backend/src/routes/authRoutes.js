@@ -1,12 +1,14 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { usersRepo } from '../db.js';
-import { signToken, requireAuth } from '../auth.js';
+import { signToken, requireAuth, requireUserRole } from '../auth.js';
 import { loginLimiter, registerLimiter, kdsPairLimiter } from '../middleware/rateLimiter.js';
 import { sanitizeText, sanitizePhone } from '../utils/sanitize.js';
 
 const router = express.Router();
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Precomputed dummy hash to mitigate user enumeration timing attacks on /login
+const DUMMY_HASH = bcrypt.hashSync('timing_mitigation_safe_string', 10);
 
 function publicUser(u) {
   return {
@@ -40,10 +42,11 @@ router.post(
   })
 );
 
-// POST /api/auth/kds-reset-pin (Authenticated: Regenerate new KDS pairing PIN)
+// POST /api/auth/kds-reset-pin (Authenticated: Regenerate new KDS pairing PIN - Cashier/Manager only)
 router.post(
   '/kds-reset-pin',
   requireAuth,
+  requireUserRole,
   wrap(async (req, res) => {
     const newPin = Math.floor(100000 + Math.random() * 900000).toString();
     const user = await usersRepo.updateKdsPin(req.userId, newPin);
@@ -106,7 +109,7 @@ router.post(
       address: cleanAddress,
       phone: cleanPhone,
     });
-    const token = signToken({ sub: user.id });
+    const token = signToken({ sub: user.id, role: 'user' });
     res.status(201).json({ token, user: publicUser(user) });
   })
 );
@@ -117,15 +120,21 @@ router.post(
   loginLimiter,
   wrap(async (req, res) => {
     const { email, password } = req.body || {};
-    if (!email || !password) {
+    if (!email || !password || typeof password !== 'string') {
       return res.status(400).json({ error: 'email and password are required' });
     }
     const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const user = await usersRepo.findByEmail(cleanEmail);
-    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+
+    // Constant-time mitigation against user enumeration timing attacks:
+    // If user is not found, compare with precomputed DUMMY_HASH so response latency is uniform
+    const hashToCompare = user ? user.password_hash : DUMMY_HASH;
+    const passwordValid = bcrypt.compareSync(password, hashToCompare);
+
+    if (!user || !passwordValid) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
-    const token = signToken({ sub: user.id });
+    const token = signToken({ sub: user.id, role: 'user' });
     res.json({ token, user: publicUser(user) });
   })
 );
@@ -141,10 +150,11 @@ router.get(
   })
 );
 
-// PUT /api/auth/settings
+// PUT /api/auth/settings (Cashier/Owner only)
 router.put(
   '/settings',
   requireAuth,
+  requireUserRole,
   wrap(async (req, res) => {
     const { storeName, upiId, payeeName, taxPercent, address, phone } = req.body || {};
     

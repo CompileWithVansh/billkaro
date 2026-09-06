@@ -21,8 +21,20 @@ export function requireAuth(req, res, next) {
   try {
     const decoded = verifyToken(token);
     req.userId = decoded.sub;
+    req.userRole = decoded.role || 'user';
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
+}
+
+// Middleware that blocks scoped KDS tokens from cashier/manager actions.
+// Defaults gracefully to 'user' for legacy tokens to avoid breaking active sessions.
+export function requireUserRole(req, res, next) {
+  if (req.userRole === 'kds') {
+    return res.status(403).json({
+      error: 'Kitchen display devices are not authorized to perform cashier operations',
+    });
+  }
+  next();
 }

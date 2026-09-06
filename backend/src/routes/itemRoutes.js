@@ -1,10 +1,12 @@
 import express from 'express';
 import { itemsRepo } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAuth, requireUserRole } from '../auth.js';
+import { scanMenuLimiter } from '../middleware/rateLimiter.js';
 import { sanitizeText } from '../utils/sanitize.js';
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(requireUserRole);
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -89,10 +91,11 @@ router.put(
   '/layout/reorder',
   wrap(async (req, res) => {
     const { order } = req.body || {};
-    if (!Array.isArray(order)) {
-      return res.status(400).json({ error: 'order must be an array of item ids' });
+    if (!Array.isArray(order) || order.length > 500) {
+      return res.status(400).json({ error: 'order must be an array of at most 500 item ids' });
     }
-    const items = await itemsRepo.reorder(req.userId, order);
+    const validOrder = order.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+    const items = await itemsRepo.reorder(req.userId, validOrder);
     res.json({ items: items.map(mapItem) });
   })
 );
@@ -101,10 +104,14 @@ router.put(
 router.put(
   '/:id',
   wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid item ID' });
+    }
     const { error, value } = parseAndValidateItem(req.body);
     if (error) return res.status(400).json({ error });
 
-    const item = await itemsRepo.update(req.params.id, req.userId, value);
+    const item = await itemsRepo.update(id, req.userId, value);
     if (!item) return res.status(404).json({ error: 'Item not found' });
     res.json({ item: mapItem(item) });
   })
@@ -114,19 +121,34 @@ router.put(
 router.delete(
   '/:id',
   wrap(async (req, res) => {
-    const ok = await itemsRepo.remove(req.params.id, req.userId);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid item ID' });
+    }
+    const ok = await itemsRepo.remove(id, req.userId);
     if (!ok) return res.status(404).json({ error: 'Item not found' });
     res.json({ ok: true });
   })
 );
 
 // POST /api/items/scan-menu (Gemini 3.6 Flash Vision Menu Scanner)
+// Protected by dedicated 15-scans-per-10-min rate limiter and 15MB body parser
 router.post(
   '/scan-menu',
+  express.json({ limit: '15mb' }),
+  scanMenuLimiter,
   wrap(async (req, res) => {
     const { imageBase64, mimeType = 'image/jpeg' } = req.body || {};
     if (!imageBase64) {
       return res.status(400).json({ error: 'Menu image data is required' });
+    }
+
+    const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+    const cleanMime = typeof mimeType === 'string' ? mimeType.toLowerCase().trim() : '';
+    if (!ALLOWED_MIME_TYPES.includes(cleanMime)) {
+      return res.status(400).json({
+        error: 'Unsupported image format. Allowed formats: JPEG, PNG, WEBP, HEIC.',
+      });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
@@ -234,20 +256,34 @@ router.post(
   '/bulk',
   wrap(async (req, res) => {
     const { items } = req.body || {};
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'Items array is required' });
+    if (!Array.isArray(items) || items.length === 0 || items.length > 100) {
+      return res.status(400).json({ error: 'Items must be an array of between 1 and 100 items' });
     }
 
     const createdItems = [];
     for (const item of items) {
-      if (!item.name) continue;
+      if (!item || !item.name) continue;
+      const cleanName = sanitizeText(item.name);
+      if (!cleanName || cleanName.length > 100) continue;
+
+      const numPrice = Number(item.price);
+      const cleanPrice = isNaN(numPrice) || numPrice < 0 || numPrice > 999999 ? 0 : numPrice;
+      const cleanCategory = sanitizeText(item.category).substring(0, 50) || 'General';
+      const cleanDesc = sanitizeText(item.description, { allowNewlines: true }).substring(0, 500);
+      const cleanColor = sanitizeText(item.color).substring(0, 20) || '#2563eb';
+      let cleanStock = null;
+      if (item.stockQuantity !== undefined && item.stockQuantity !== null && item.stockQuantity !== '') {
+        const s = Number(item.stockQuantity);
+        if (Number.isInteger(s) && s >= 0 && s <= 999999) cleanStock = s;
+      }
+
       const created = await itemsRepo.create(req.userId, {
-        name: item.name.trim(),
-        price: Number(item.price) || 0,
-        color: item.color || '#2563eb',
-        category: (item.category || 'General').trim(),
-        description: (item.description || '').trim(),
-        stockQuantity: item.stockQuantity !== undefined && item.stockQuantity !== null ? Number(item.stockQuantity) : null,
+        name: cleanName,
+        price: cleanPrice,
+        color: cleanColor,
+        category: cleanCategory,
+        description: cleanDesc,
+        stockQuantity: cleanStock,
       });
       createdItems.push(created);
     }
