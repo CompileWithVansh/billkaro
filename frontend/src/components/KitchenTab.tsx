@@ -224,12 +224,26 @@ export default function KitchenTab({ user }: Props) {
                     {/* Ticket Header */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                       <div>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#38bdf8' }}>
-                          {t.label || 'Table Order'}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#38bdf8' }}>
+                            {t.label || 'Table Order'}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.78rem',
+                              fontWeight: 800,
+                              background: '#0284c7',
+                              color: '#ffffff',
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              letterSpacing: '0.5px',
+                            }}
+                          >
+                            {t.invoiceNumber ? (t.invoiceNumber.startsWith('#') ? t.invoiceNumber : `#${t.invoiceNumber}`) : `#${t.id}`}
+                          </span>
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>
-                          {t.invoiceNumber ? `#${t.invoiceNumber} • ` : ''}
-                          {orderTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 4 }}>
+                          🕒 Ordered {orderTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
@@ -256,25 +270,43 @@ export default function KitchenTab({ user }: Props) {
 
                     {/* Ordered Items List */}
                     <div style={{ background: 'var(--bg, #0f172a)', borderRadius: 10, padding: '10px 12px', margin: '8px 0 12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                      {(t.items || []).map((item, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            padding: '5px 0',
-                            borderBottom: idx === t.items.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.06)',
-                            fontSize: '0.92rem',
-                          }}
-                        >
-                          <span style={{ fontWeight: 600, color: '#f8fafc' }}>
-                            {item.name}
-                          </span>
-                          <span style={{ fontWeight: 800, color: '#38bdf8', marginLeft: 8 }}>
-                            x{item.qty}
-                          </span>
-                        </div>
-                      ))}
+                      {(t.items || []).map((item, idx) => {
+                        const isNew = (item as any).isNew;
+                        const isUpdated = (item as any).isUpdated;
+                        const newQty = (item as any).newQty;
+                        return (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '6px 0',
+                              borderBottom: idx === t.items.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.06)',
+                              fontSize: '0.92rem',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontWeight: 600, color: '#f8fafc' }}>
+                                {item.name}
+                              </span>
+                              {isNew && (
+                                <span style={{ fontSize: '0.68rem', background: '#f59e0b', color: '#000', padding: '1px 6px', borderRadius: 4, fontWeight: 800 }}>
+                                  +NEW
+                                </span>
+                              )}
+                              {isUpdated && (
+                                <span style={{ fontSize: '0.68rem', background: '#38bdf8', color: '#000', padding: '1px 6px', borderRadius: 4, fontWeight: 800 }}>
+                                  +{newQty} MORE
+                                </span>
+                              )}
+                            </div>
+                            <span style={{ fontWeight: 800, color: isNew ? '#f59e0b' : '#38bdf8', marginLeft: 8 }}>
+                              x{item.qty}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 

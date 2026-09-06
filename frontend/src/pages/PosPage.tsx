@@ -821,9 +821,34 @@ export default function PosPage() {
   }
 
   const [kdsSentToast, setKdsSentToast] = useState(false);
+  const [isSendingToKds, setIsSendingToKds] = useState(false);
+
+  // Compute count of newly added or increased items since last sent to kitchen
+  const unsentCount = useMemo(() => {
+    if (!activeBill) return 0;
+    if (!activeBill.lastSentLines || activeBill.lastSentLines.length === 0) {
+      return activeBill.lines.reduce((s, l) => s + l.qty, 0);
+    }
+    let count = 0;
+    for (const line of activeBill.lines) {
+      const prev = activeBill.lastSentLines.find(
+        (p) =>
+          p.lineId === line.lineId ||
+          (p.itemId && p.itemId === line.itemId) ||
+          p.name.toLowerCase() === line.name.toLowerCase()
+      );
+      if (!prev) {
+        count += line.qty;
+      } else if (line.qty > prev.qty) {
+        count += line.qty - prev.qty;
+      }
+    }
+    return count;
+  }, [activeBill]);
 
   async function handleSendToKitchen() {
-    if (activeBill.lines.length === 0) return;
+    if (isSendingToKds || !activeBill || activeBill.lines.length === 0) return;
+    setIsSendingToKds(true);
     try {
       const invNum = activeBill.savedBillId ? formatInvoiceNumber(activeBill.savedBillId) : undefined;
       await api.post('/bills/kds/send', {
@@ -832,11 +857,27 @@ export default function PosPage() {
         invoiceNumber: invNum,
         customerName: currentReceiptDetails?.customerName || undefined,
       });
+
+      // Snapshot sent lines and update tab status
+      setBills((prev) =>
+        prev.map((b) =>
+          b.id === activeBill.id
+            ? {
+                ...b,
+                kdsStatus: 'preparing',
+                lastSentLines: JSON.parse(JSON.stringify(b.lines)),
+              }
+            : b
+        )
+      );
+
       setKdsSentToast(true);
       setTimeout(() => setKdsSentToast(false), 3000);
     } catch (err) {
       console.error('Failed to send ticket to KDS:', err);
       alert('Could not send ticket to Kitchen.');
+    } finally {
+      setIsSendingToKds(false);
     }
   }
 
@@ -1332,12 +1373,17 @@ export default function PosPage() {
                   📲 Bill {activeBill.savedBillId ? formatInvoiceNumber(activeBill.savedBillId) : ''} Shared (Unpaid)
                 </span>
               )}
-              {activeBill?.kdsStatus === 'ready' && (
+              {activeBill?.kdsStatus === 'ready' && unsentCount === 0 && (
                 <span style={{ fontSize: '0.75rem', background: '#166534', color: '#86efac', padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
                   ✅ Food Ready!
                 </span>
               )}
-              {activeBill?.kdsStatus === 'preparing' && (
+              {unsentCount > 0 && activeBill?.lastSentLines && activeBill.lastSentLines.length > 0 && (
+                <span style={{ fontSize: '0.75rem', background: '#78350f', color: '#fde68a', padding: '2px 8px', borderRadius: 12, fontWeight: 700, border: '1px solid #d97706' }}>
+                  ⚠️ +{unsentCount} Unsent Item{unsentCount > 1 ? 's' : ''}
+                </span>
+              )}
+              {activeBill?.kdsStatus === 'preparing' && unsentCount === 0 && (
                 <span style={{ fontSize: '0.75rem', background: '#854d0e', color: '#fef08a', padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
                   🔥 Kitchen Preparing
                 </span>
@@ -1414,19 +1460,49 @@ export default function PosPage() {
               <button
                 className="btn ghost"
                 style={{
-                  background: activeBill?.kdsStatus === 'ready' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(56, 189, 248, 0.1)',
-                  color: activeBill?.kdsStatus === 'ready' ? '#4ade80' : '#38bdf8',
-                  border: activeBill?.kdsStatus === 'ready' ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(56, 189, 248, 0.3)',
+                  background:
+                    unsentCount > 0 && activeBill?.lastSentLines && activeBill.lastSentLines.length > 0
+                      ? 'rgba(245, 158, 11, 0.2)'
+                      : activeBill?.kdsStatus === 'ready' && unsentCount === 0
+                      ? 'rgba(34, 197, 94, 0.15)'
+                      : activeBill?.kdsStatus === 'preparing' && unsentCount === 0
+                      ? 'rgba(234, 88, 12, 0.15)'
+                      : 'rgba(56, 189, 248, 0.1)',
+                  color:
+                    unsentCount > 0 && activeBill?.lastSentLines && activeBill.lastSentLines.length > 0
+                      ? '#f59e0b'
+                      : activeBill?.kdsStatus === 'ready' && unsentCount === 0
+                      ? '#4ade80'
+                      : activeBill?.kdsStatus === 'preparing' && unsentCount === 0
+                      ? '#fb923c'
+                      : '#38bdf8',
+                  border:
+                    unsentCount > 0 && activeBill?.lastSentLines && activeBill.lastSentLines.length > 0
+                      ? '1.5px solid #f59e0b'
+                      : activeBill?.kdsStatus === 'ready' && unsentCount === 0
+                      ? '1px solid rgba(34, 197, 94, 0.3)'
+                      : '1px solid rgba(56, 189, 248, 0.3)',
                   width: '100%',
-                  padding: '8px 12px',
-                  fontSize: '0.85rem',
+                  padding: '10px 12px',
+                  fontSize: '0.88rem',
+                  fontWeight: 700,
+                  boxShadow:
+                    unsentCount > 0 && activeBill?.lastSentLines && activeBill.lastSentLines.length > 0
+                      ? '0 0 12px rgba(245, 158, 11, 0.35)'
+                      : 'none',
+                  cursor: isSendingToKds ? 'not-allowed' : 'pointer',
+                  opacity: isSendingToKds ? 0.7 : 1,
                 }}
-                disabled={!activeBill || activeBill.lines.length === 0}
+                disabled={!activeBill || activeBill.lines.length === 0 || isSendingToKds}
                 onClick={handleSendToKitchen}
                 title="Send live ticket to Kitchen Display Screen"
               >
-                {kdsSentToast
+                {isSendingToKds
+                  ? '⏳ Sending to Kitchen…'
+                  : kdsSentToast
                   ? '✔ Ticket Sent to Kitchen!'
+                  : unsentCount > 0 && activeBill?.lastSentLines && activeBill.lastSentLines.length > 0
+                  ? `🍳 Send +${unsentCount} New Item${unsentCount > 1 ? 's' : ''} to Kitchen`
                   : activeBill?.kdsStatus === 'ready'
                   ? '✅ Food Ready to Serve!'
                   : activeBill?.kdsStatus === 'preparing'

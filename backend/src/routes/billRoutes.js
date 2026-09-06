@@ -55,6 +55,9 @@ router.post(
 // All subsequent routes require full authentication
 router.use(requireAuth);
 
+// In-memory deduplication cache for KDS to prevent duplicate tickets on rapid double-taps
+const recentKdsSends = new Map(); // key -> { timestamp, ticket }
+
 // POST /api/bills/kds/send (Explicitly send current cart ticket to Kitchen Display - Cashier only)
 router.post(
   '/kds/send',
@@ -77,24 +80,73 @@ router.post(
       price: Number(l.price) || 0,
       qty: Number(l.qty) || 1,
     }));
-    const orderTicket = {
-      id: 'KDS-' + Date.now().toString().slice(-4),
-      label: cleanLabel,
-      items: cleanItems,
-      total: cleanItems.reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.qty) || 1), 0),
-      createdAt: new Date().toISOString(),
-      status: 'preparing',
-      invoiceNumber: cleanInvoiceNumber,
-      customerName: cleanCustomerName,
-    };
 
-    // Store in active in-memory KDS queue for this store
+    // Deduplication check: Ignore rapid double-clicks within 3 seconds for the exact same store, table, and item payload
+    const dedupKey = `${storeId}:${cleanLabel.toLowerCase()}:${JSON.stringify(cleanItems.map((i) => ({ name: i.name, qty: i.qty })))}`;
+    const recentSend = recentKdsSends.get(dedupKey);
+    if (recentSend && Date.now() - recentSend.timestamp < 3000) {
+      return res.json({ ok: true, ticket: recentSend.ticket, duplicateSuppressed: true });
+    }
+
     const existing = activeKdsQueue.get(storeId) || [];
-    activeKdsQueue.set(storeId, [orderTicket, ...existing.filter((t) => t.id !== orderTicket.id)]);
+    const existingTableTicket = existing.find(
+      (t) => (t.label || '').trim().toLowerCase() === cleanLabel.trim().toLowerCase()
+    );
+
+    let orderTicket;
+    if (existingTableTicket) {
+      // Incremental Order / Running Table:
+      // Compare with previous items and flag newly added items for the kitchen
+      const prevItems = existingTableTicket.items || [];
+      const updatedItems = cleanItems.map((newItem) => {
+        const prev = prevItems.find((p) => p.name.toLowerCase() === newItem.name.toLowerCase());
+        if (!prev) {
+          return { ...newItem, isNew: true };
+        } else if (newItem.qty > prev.qty) {
+          return { ...newItem, newQty: newItem.qty - prev.qty, isUpdated: true };
+        }
+        return newItem;
+      });
+
+      existingTableTicket.items = updatedItems;
+      existingTableTicket.total = cleanItems.reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.qty) || 1), 0);
+      existingTableTicket.status = 'preparing'; // Reset status to cooking for kitchen
+      if (cleanInvoiceNumber) {
+        existingTableTicket.invoiceNumber = cleanInvoiceNumber;
+      }
+      if (cleanCustomerName) {
+        existingTableTicket.customerName = cleanCustomerName;
+      }
+      orderTicket = existingTableTicket;
+    } else {
+      // New kitchen ticket with guaranteed order/invoice identifier
+      const ticketId = 'KDS-' + Date.now().toString().slice(-4);
+      orderTicket = {
+        id: ticketId,
+        label: cleanLabel,
+        items: cleanItems,
+        total: cleanItems.reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.qty) || 1), 0),
+        createdAt: new Date().toISOString(),
+        status: 'preparing',
+        invoiceNumber: cleanInvoiceNumber || ticketId,
+        customerName: cleanCustomerName,
+      };
+      activeKdsQueue.set(storeId, [orderTicket, ...existing]);
+    }
+
+    recentKdsSends.set(dedupKey, { timestamp: Date.now(), ticket: orderTicket });
 
     const io = req.app.get('io');
     if (io) {
       io.to(`store_${storeId}`).emit('kds:new-order', orderTicket);
+      io.to(`store_${storeId}`).emit('kds:order-updated', {
+        orderId: orderTicket.id,
+        label: orderTicket.label,
+        status: 'preparing',
+        invoiceNumber: orderTicket.invoiceNumber,
+        customerName: orderTicket.customerName,
+        items: orderTicket.items,
+      });
     }
     res.json({ ok: true, ticket: orderTicket });
   })
@@ -109,6 +161,11 @@ setInterval(() => {
   for (const [key, val] of recentBillsMap.entries()) {
     if (now - val.timestamp > 60000) {
       recentBillsMap.delete(key);
+    }
+  }
+  for (const [key, val] of recentKdsSends.entries()) {
+    if (now - val.timestamp > 60000) {
+      recentKdsSends.delete(key);
     }
   }
 }, 60000).unref();

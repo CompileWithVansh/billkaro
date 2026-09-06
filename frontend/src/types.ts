@@ -61,6 +61,7 @@ export interface Bill {
   label: string;   // e.g. "T1"
   lines: CartLine[];
   kdsStatus?: 'preparing' | 'ready';
+  lastSentLines?: CartLine[];
   savedBillId?: number | string;  // persisted backend bill ID once generated / shared
   billShared?: boolean;           // whether bill was shared on WhatsApp awaiting payment
   discountType?: 'percent' | 'flat' | null;
