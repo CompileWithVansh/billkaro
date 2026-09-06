@@ -5,6 +5,8 @@ interface Props {
   amount: number;
   subtotal?: number;
   taxPercent?: number;
+  taxEnabled?: boolean;
+  taxInclusive?: boolean;
   upiId: string | null;
   payeeName: string | null;
   storeName: string;
@@ -40,6 +42,8 @@ export default function PaymentModal({
   amount,
   subtotal,
   taxPercent,
+  taxEnabled,
+  taxInclusive,
   upiId,
   payeeName,
   storeName,
@@ -47,7 +51,9 @@ export default function PaymentModal({
   onConfirmPayment,
 }: Props) {
   const baseSubtotal = subtotal !== undefined ? subtotal : amount;
-  const taxRate = taxPercent || 0;
+  const isTaxEnabled = taxEnabled !== undefined ? taxEnabled : (taxPercent ? taxPercent > 0 : false);
+  const isTaxInclusive = taxInclusive !== false;
+  const taxRate = isTaxEnabled ? (taxPercent || 0) : 0;
 
   // Discount state
   const [discountType, setDiscountType] = useState<'percent' | 'flat'>('percent');
@@ -81,9 +87,22 @@ export default function PaymentModal({
     }
   }
 
-  const taxableSubtotal = Math.max(0, baseSubtotal - discountAmount);
-  const calculatedTax = Number((taxableSubtotal * (taxRate / 100)).toFixed(2));
-  const finalPayable = Number((taxableSubtotal + calculatedTax).toFixed(2));
+  const netAfterDiscount = Math.max(0, baseSubtotal - discountAmount);
+  let taxableSubtotal = netAfterDiscount;
+  let calculatedTax = 0;
+  let finalPayable = netAfterDiscount;
+
+  if (taxRate > 0) {
+    if (isTaxInclusive) {
+      finalPayable = netAfterDiscount;
+      taxableSubtotal = Number((finalPayable / (1 + taxRate / 100)).toFixed(2));
+      calculatedTax = Number((finalPayable - taxableSubtotal).toFixed(2));
+    } else {
+      taxableSubtotal = netAfterDiscount;
+      calculatedTax = Number((taxableSubtotal * (taxRate / 100)).toFixed(2));
+      finalPayable = Number((taxableSubtotal + calculatedTax).toFixed(2));
+    }
+  }
 
   function handleSplitCashChange(val: string) {
     setSplitCash(val);
@@ -305,11 +324,14 @@ export default function PaymentModal({
             <div className="qr-amount" style={{ margin: '2px 0', fontSize: '2rem', fontWeight: 800, color: '#38bdf8', lineHeight: 1.1 }}>
               ₹{finalPayable.toFixed(2)}
             </div>
-            {discountAmount > 0 && (
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 3 }}>
-                Subtotal: ₹{baseSubtotal.toFixed(2)} • Discount: -₹{discountAmount.toFixed(2)}
-              </div>
-            )}
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 3 }}>
+              {discountAmount > 0 && `Subtotal: ₹${baseSubtotal.toFixed(2)} • Discount: -₹${discountAmount.toFixed(2)} `}
+              {taxRate > 0 && (
+                isTaxInclusive
+                  ? `(Incl. ₹${calculatedTax.toFixed(2)} GST: CGST ₹${(calculatedTax / 2).toFixed(2)} + SGST ₹${(calculatedTax / 2).toFixed(2)})`
+                  : `(+ ₹${calculatedTax.toFixed(2)} GST: CGST ₹${(calculatedTax / 2).toFixed(2)} + SGST ₹${(calculatedTax / 2).toFixed(2)})`
+              )}
+            </div>
           </div>
 
           {/* 3. Payment Method Tabs (UPI, Cash, Split, Udhaar) - Prominent, Easy Tap */}
@@ -565,7 +587,7 @@ export default function PaymentModal({
             {discountAmount > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>
                 <span>Savings: -₹{discountAmount.toFixed(2)} ({discountType === 'percent' ? `${effectiveDiscountValue}%` : 'Flat'})</span>
-                {taxRate > 0 && <span style={{ color: '#94a3b8', fontWeight: 400 }}>Tax on ₹{taxableSubtotal.toFixed(2)}: ₹{calculatedTax.toFixed(2)}</span>}
+                {taxRate > 0 && <span style={{ color: '#94a3b8', fontWeight: 400 }}>Tax on ₹{taxableSubtotal.toFixed(2)}: ₹{calculatedTax.toFixed(2)} ({isTaxInclusive ? 'Incl.' : '+Extra'})</span>}
               </div>
             )}
           </div>

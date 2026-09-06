@@ -70,12 +70,32 @@ export function printBill({
        </tr>`
     : '';
 
-  const taxRow = tax > 0
-    ? `<tr class="summary-row">
-         <td colspan="3">Tax (${user.taxPercent || 0}%)</td>
-         <td>₹${tax.toFixed(2)}</td>
-       </tr>`
-    : '';
+  const isTaxEnabled = user?.taxEnabled ?? (user?.taxPercent ? user.taxPercent > 0 : false);
+  const isTaxInclusive = user?.taxInclusive !== false;
+  const taxRate = isTaxEnabled ? (user.taxPercent || 0) : 0;
+  const halfRate = +(taxRate / 2).toFixed(2);
+
+  let taxRows = '';
+  if (taxRate > 0 && tax > 0) {
+    const cgst = +(subtotal * (halfRate / 100)).toFixed(2);
+    const sgst = +(subtotal * (halfRate / 100)).toFixed(2);
+    const roundOff = +(total - (subtotal + cgst + sgst)).toFixed(2);
+
+    taxRows = `
+      <tr class="summary-row">
+        <td colspan="3">CGST (${halfRate}%)</td>
+        <td>₹${cgst.toFixed(2)}</td>
+      </tr>
+      <tr class="summary-row">
+        <td colspan="3">SGST (${halfRate}%)</td>
+        <td>₹${sgst.toFixed(2)}</td>
+      </tr>
+      ${Math.abs(roundOff) >= 0.005 ? `
+      <tr class="summary-row" style="font-size: 10px; color: #555;">
+        <td colspan="3">Round off</td>
+        <td>${roundOff > 0 ? `+ ₹${roundOff.toFixed(2)}` : `- ₹${Math.abs(roundOff).toFixed(2)}`}</td>
+      </tr>` : ''}`;
+  }
 
   let paymentRow = '';
   if (paymentMethod === 'split' && cashAmount != null && upiAmount != null) {
@@ -91,6 +111,8 @@ export function printBill({
       </td>
     </tr>`;
   }
+
+  const totalQty = bill.lines.reduce((s, l) => s + l.qty, 0);
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -127,7 +149,7 @@ export function printBill({
     .store-sub {
       text-align: center;
       font-size: 10px;
-      color: #444;
+      color: #333;
       margin-bottom: 2px;
     }
 
@@ -185,7 +207,9 @@ export function printBill({
 <body>
   <div class="store-name">${escHtml(user.storeName)}</div>
   ${user.address ? `<div class="store-sub">${escHtml(user.address)}</div>` : ''}
-  ${user.phone   ? `<div class="store-sub">📞 ${escHtml(user.phone)}</div>` : ''}
+  ${user.phone   ? `<div class="store-sub">Mob No - ${escHtml(user.phone)}</div>` : ''}
+  ${user.gstin   ? `<div class="store-sub">GSTIN - ${escHtml(user.gstin)}</div>` : ''}
+  ${user.fssai   ? `<div class="store-sub">FSSAI - ${escHtml(user.fssai)}</div>` : ''}
 
   <hr class="divider" />
 
@@ -215,23 +239,29 @@ export function printBill({
   <table>
     <tbody>
       <tr class="summary-row">
-        <td colspan="3">Subtotal</td>
+        <td colspan="3">Total Qty: ${totalQty} &nbsp; ${taxRate > 0 && isTaxInclusive ? 'Sub Total' : 'Subtotal'}</td>
         <td>₹${subtotal.toFixed(2)}</td>
       </tr>
       ${discountRow}
-      ${taxRow}
+      ${taxRows}
       <tr class="total-row">
-        <td colspan="3">TOTAL</td>
+        <td colspan="3">${taxRate > 0 && isTaxInclusive ? 'Grand Total' : 'TOTAL'}</td>
         <td>₹${total.toFixed(2)}</td>
       </tr>
       ${paymentRow}
+      ${taxRate > 0 && isTaxInclusive ? `
+      <tr class="summary-row" style="font-size: 9px; color: #555;">
+        <td colspan="4" style="text-align: center; padding-top: 4px; font-style: italic;">
+          (Prices are inclusive of GST)
+        </td>
+      </tr>` : ''}
     </tbody>
   </table>
 
   <hr class="divider" />
 
   <div class="footer">
-    Thank you, visit again!
+    Thanks & Visit Again !!!!!
     <div class="powered">Powered by BillKaro</div>
   </div>
 </body>

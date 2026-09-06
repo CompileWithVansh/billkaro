@@ -9,6 +9,10 @@ export interface User {
   currency: string;
   taxPercent: number;
   kdsPin?: string;
+  gstin?: string | null;
+  fssai?: string | null;
+  taxEnabled?: boolean;
+  taxInclusive?: boolean;
 }
 
 export interface Item {

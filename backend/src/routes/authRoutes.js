@@ -22,6 +22,10 @@ function publicUser(u) {
     currency: u.currency,
     taxPercent: u.tax_percent,
     kdsPin: u.kds_pin,
+    gstin: u.gstin || null,
+    fssai: u.fssai || null,
+    taxEnabled: Boolean(u.tax_enabled),
+    taxInclusive: u.tax_inclusive !== false,
   };
 }
 
@@ -156,7 +160,7 @@ router.put(
   requireAuth,
   requireUserRole,
   wrap(async (req, res) => {
-    const { storeName, upiId, payeeName, taxPercent, address, phone } = req.body || {};
+    const { storeName, upiId, payeeName, taxPercent, address, phone, gstin, fssai, taxEnabled, taxInclusive } = req.body || {};
     
     let cleanStoreName = undefined;
     if (storeName !== undefined) {
@@ -179,6 +183,10 @@ router.put(
     const cleanPayeeName = payeeName !== undefined ? (sanitizeText(payeeName).substring(0, 100) || null) : undefined;
     const cleanAddress = address !== undefined ? (sanitizeText(address, { allowNewlines: true }).substring(0, 300) || null) : undefined;
     const cleanPhone = phone !== undefined ? (sanitizePhone(phone) || null) : undefined;
+    const cleanGstin = gstin !== undefined ? (gstin ? sanitizeText(gstin).toUpperCase().substring(0, 30) : null) : undefined;
+    const cleanFssai = fssai !== undefined ? (fssai ? sanitizeText(fssai).substring(0, 30) : null) : undefined;
+    const cleanTaxEnabled = taxEnabled !== undefined ? Boolean(taxEnabled) : undefined;
+    const cleanTaxInclusive = taxInclusive !== undefined ? Boolean(taxInclusive) : undefined;
 
     const updated = await usersRepo.update(req.userId, {
       storeName: cleanStoreName,
@@ -187,6 +195,10 @@ router.put(
       taxPercent: cleanTax,
       address: cleanAddress,
       phone: cleanPhone,
+      gstin: cleanGstin,
+      fssai: cleanFssai,
+      taxEnabled: cleanTaxEnabled,
+      taxInclusive: cleanTaxInclusive,
     });
     if (!updated) return res.status(404).json({ error: 'User not found' });
     res.json({ user: publicUser(updated) });

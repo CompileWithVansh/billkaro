@@ -355,6 +355,36 @@ test('Financial Integrity - Server-side Total Recalculation & Fraud Prevention',
   assert.notEqual(serverTotal, clientManipulatedTotal);
 });
 
+test('Financial Integrity - Inclusive GST Math (Standard Indian Restaurant 5% Scheme)', () => {
+  const taxPercent = 5; // 5% GST
+  const isTaxInclusive = true;
+  const items = [
+    { itemId: 1, name: 'Naan Plate', price: 190, qty: 1 },
+  ];
+
+  const gross = items.reduce((sum, item) => sum + item.price * item.qty, 0); // 190
+  const discount = 0;
+  const net = gross - discount;
+
+  // Inclusive math: Total is net price; tax is extracted
+  const serverTotal = net; // 190.00
+  const serverTaxable = Number((serverTotal / (1 + taxPercent / 100)).toFixed(2)); // 180.95
+  const serverTax = Number((serverTotal - serverTaxable).toFixed(2)); // 9.05
+  const cgstRate = taxPercent / 2; // 2.5%
+  const sgstRate = taxPercent / 2; // 2.5%
+  const cgst = Number((serverTaxable * (cgstRate / 100)).toFixed(2)); // 4.52
+  const sgst = Number((serverTaxable * (sgstRate / 100)).toFixed(2)); // 4.52
+  const roundOff = Number((serverTotal - (serverTaxable + cgst + sgst)).toFixed(2)); // +0.01
+
+  assert.equal(serverTotal, 190.00);
+  assert.equal(serverTaxable, 180.95);
+  assert.equal(cgstRate, 2.5);
+  assert.equal(sgstRate, 2.5);
+  assert.equal(cgst, 4.52);
+  assert.equal(sgst, 4.52);
+  assert.equal(roundOff, 0.01);
+});
+
 test('Price Verification - Detects Tampered Catalog Item Price', () => {
   const dbItem = { id: 5, name: 'Margherita Pizza 🍕', price: 299 };
   

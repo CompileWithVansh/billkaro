@@ -139,8 +139,17 @@ export default function ReportsTab({ user, items }: Props) {
     const splitText = b.paymentMethod === 'split'
       ? `SPLIT (Cash: ₹${(Number(b.cashAmount) || 0).toFixed(2)} + UPI: ₹${(Number(b.upiAmount) || 0).toFixed(2)})`
       : (b.paymentMethod || 'UPI').toUpperCase();
+    const isTaxEnabled = user?.taxEnabled ?? (user?.taxPercent ? user.taxPercent > 0 : false);
+    const isTaxInclusive = user?.taxInclusive !== false;
+    const taxRate = isTaxEnabled ? (user.taxPercent || 0) : 0;
+    const halfRate = +(taxRate / 2).toFixed(2);
+    const taxText = taxRate > 0 && b.tax > 0
+      ? `\nCGST (${halfRate}%): ₹${(Number(b.tax) / 2).toFixed(2)}\nSGST (${halfRate}%): ₹${(Number(b.tax) / 2).toFixed(2)}${isTaxInclusive ? ' (Included in prices)' : ''}`
+      : '';
+    const gstinHeader = user?.gstin ? `\nGSTIN: ${user.gstin}` : '';
+    const fssaiHeader = user?.fssai ? `\nFSSAI: ${user.fssai}` : '';
 
-    const textMessage = `*BillKaro Receipt — ${user.storeName || 'BillKaro'}*\nDate: ${new Date(b.createdAt).toLocaleDateString('en-IN')}\nInvoice: *${billDisplay}*${b.customerName ? `\nCustomer: ${b.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${Number(b.subtotal).toFixed(2)}${discountText}${b.tax > 0 ? `\nTax (${user.taxPercent || 0}%): ₹${Number(b.tax).toFixed(2)}` : ''}\n*Total Amount: ₹${Number(b.total).toFixed(2)}*\nPayment: ${b.status === 'unpaid' ? 'UDHAAR / UNPAID' : `PAID via ${splitText}`}\n----------------------------------${upiSection}\nThank you for visiting us!`;
+    const textMessage = `*BillKaro Receipt — ${user.storeName || 'BillKaro'}*${gstinHeader}${fssaiHeader}\nDate: ${new Date(b.createdAt).toLocaleDateString('en-IN')}\nInvoice: *${billDisplay}*${b.customerName ? `\nCustomer: ${b.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${Number(b.subtotal).toFixed(2)}${discountText}${taxText}\n*Total Amount: ₹${Number(b.total).toFixed(2)}*\nPayment: ${b.status === 'unpaid' ? 'UDHAAR / UNPAID' : `PAID via ${splitText}`}\n----------------------------------${upiSection}\nThank you for visiting us!`;
 
     const openWhatsAppDirect = () => {
       if (targetPhone) {

@@ -229,9 +229,11 @@ router.post(
       }
     }
 
-    // 2. Authoritative server-side financial math with discount
+    // 2. Authoritative server-side financial math with discount and tax
     const user = await usersRepo.findById(userId);
-    const taxPercent = user && typeof user.tax_percent === 'number' && user.tax_percent >= 0 ? user.tax_percent : 0;
+    const taxEnabled = Boolean(user && user.tax_enabled);
+    const taxPercent = taxEnabled && typeof user.tax_percent === 'number' && user.tax_percent >= 0 ? user.tax_percent : 0;
+    const isTaxInclusive = user?.tax_inclusive !== false;
 
     const serverSubtotal = cleanItems.reduce(
       (sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1),
@@ -259,9 +261,24 @@ router.post(
       }
     }
 
-    const serverTaxable = Math.max(0, serverSubtotal - cleanDiscountAmount);
-    const serverTax = Number((serverTaxable * (taxPercent / 100)).toFixed(2));
-    const serverTotal = Number((serverTaxable + serverTax).toFixed(2));
+    const netAfterDiscount = Math.max(0, serverSubtotal - cleanDiscountAmount);
+    let serverTaxable = netAfterDiscount;
+    let serverTax = 0;
+    let serverTotal = netAfterDiscount;
+
+    if (taxEnabled && taxPercent > 0) {
+      if (isTaxInclusive) {
+        // Inclusive GST (Restaurant Standard): Menu prices include GST; tax is extracted
+        serverTotal = netAfterDiscount;
+        serverTaxable = Number((serverTotal / (1 + taxPercent / 100)).toFixed(2));
+        serverTax = Number((serverTotal - serverTaxable).toFixed(2));
+      } else {
+        // Exclusive GST: Tax added on top of item prices
+        serverTaxable = netAfterDiscount;
+        serverTax = Number((serverTaxable * (taxPercent / 100)).toFixed(2));
+        serverTotal = Number((serverTaxable + serverTax).toFixed(2));
+      }
+    }
 
     const now = Date.now();
 
@@ -306,7 +323,7 @@ router.post(
     const bill = await billsRepo.create(userId, {
       label: cleanLabel,
       items: cleanItems,
-      subtotal: serverSubtotal,
+      subtotal: serverTaxable,
       tax: serverTax,
       total: serverTotal,
       paymentMethod: cleanPaymentMethod,

@@ -106,6 +106,13 @@ export async function initDb() {
     ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS address TEXT;
     ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS phone   TEXT;
     ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS kds_pin TEXT;
+    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS gstin   TEXT DEFAULT NULL;
+    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS fssai   TEXT DEFAULT NULL;
+    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS tax_enabled   BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE billkaro_users ADD COLUMN IF NOT EXISTS tax_inclusive BOOLEAN NOT NULL DEFAULT true;
+
+    -- Backfill: if existing user has tax_percent > 0, set tax_enabled = true
+    UPDATE billkaro_users SET tax_enabled = true WHERE tax_percent > 0;
 
     ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS stock_quantity INTEGER DEFAULT NULL;
     ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
@@ -158,25 +165,43 @@ export const usersRepo = {
     );
     return rows[0] || null;
   },
-  async create({ storeName, email, passwordHash, upiId, payeeName, taxPercent, address, phone }) {
+  async create({ storeName, email, passwordHash, upiId, payeeName, taxPercent, address, phone, gstin, fssai, taxEnabled, taxInclusive }) {
     const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
     const { rows } = await getPool().query(
-      `INSERT INTO billkaro_users (store_name, email, password_hash, upi_id, payee_name, tax_percent, address, phone, kds_pin)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [storeName, email, passwordHash, upiId || null, payeeName || storeName, Number(taxPercent) || 0, address || null, phone || null, randomPin]
+      `INSERT INTO billkaro_users (store_name, email, password_hash, upi_id, payee_name, tax_percent, address, phone, kds_pin, gstin, fssai, tax_enabled, tax_inclusive)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      [
+        storeName,
+        email,
+        passwordHash,
+        upiId || null,
+        payeeName || storeName,
+        Number(taxPercent) || 0,
+        address || null,
+        phone || null,
+        randomPin,
+        gstin || null,
+        fssai || null,
+        Boolean(taxEnabled),
+        taxInclusive !== false,
+      ]
     );
     return rows[0];
   },
   async update(id, fields) {
     const { rows } = await getPool().query(
       `UPDATE billkaro_users SET
-         store_name  = COALESCE($1, store_name),
-         upi_id      = COALESCE($2, upi_id),
-         payee_name  = COALESCE($3, payee_name),
-         tax_percent = COALESCE($4, tax_percent),
-         address     = COALESCE($5, address),
-         phone       = COALESCE($6, phone)
-       WHERE id = $7 RETURNING *`,
+         store_name    = COALESCE($1, store_name),
+         upi_id        = COALESCE($2, upi_id),
+         payee_name    = COALESCE($3, payee_name),
+         tax_percent   = COALESCE($4, tax_percent),
+         address       = COALESCE($5, address),
+         phone         = COALESCE($6, phone),
+         gstin         = CASE WHEN $7::boolean THEN $8 ELSE gstin END,
+         fssai         = CASE WHEN $9::boolean THEN $10 ELSE fssai END,
+         tax_enabled   = COALESCE($11, tax_enabled),
+         tax_inclusive = COALESCE($12, tax_inclusive)
+       WHERE id = $13 RETURNING *`,
       [
         fields.storeName  ?? null,
         fields.upiId      ?? null,
@@ -184,6 +209,12 @@ export const usersRepo = {
         fields.taxPercent == null ? null : Number(fields.taxPercent),
         fields.address    ?? null,
         fields.phone      ?? null,
+        fields.gstin !== undefined,
+        fields.gstin ?? null,
+        fields.fssai !== undefined,
+        fields.fssai ?? null,
+        fields.taxEnabled !== undefined ? Boolean(fields.taxEnabled) : null,
+        fields.taxInclusive !== undefined ? Boolean(fields.taxInclusive) : null,
         Number(id),
       ]
     );

@@ -88,10 +88,32 @@ function newBill(index: number): Bill {
   };
 }
 
-function billTotal(b: Bill, taxPercent: number) {
-  const subtotal = b.lines.reduce((s, l) => s + l.price * l.qty, 0);
-  const tax = +(subtotal * (taxPercent / 100)).toFixed(2);
-  return { subtotal, tax, total: +(subtotal + tax).toFixed(2) };
+function billTotal(
+  b: Bill,
+  taxPercent: number,
+  taxEnabled: boolean = true,
+  taxInclusive: boolean = true
+) {
+  const gross = b.lines.reduce((s, l) => s + l.price * l.qty, 0);
+  if (!taxEnabled || taxPercent <= 0) {
+    return { subtotal: gross, tax: 0, total: gross, cgst: 0, sgst: 0 };
+  }
+  if (taxInclusive) {
+    const total = gross;
+    const subtotal = +(total / (1 + taxPercent / 100)).toFixed(2);
+    const tax = +(total - subtotal).toFixed(2);
+    const halfRate = taxPercent / 200;
+    const cgst = +(subtotal * halfRate).toFixed(2);
+    const sgst = +(subtotal * halfRate).toFixed(2);
+    return { subtotal, tax, total, cgst, sgst };
+  } else {
+    const subtotal = gross;
+    const tax = +(subtotal * (taxPercent / 100)).toFixed(2);
+    const halfRate = taxPercent / 200;
+    const cgst = +(subtotal * halfRate).toFixed(2);
+    const sgst = +(subtotal * halfRate).toFixed(2);
+    return { subtotal, tax, total: +(subtotal + tax).toFixed(2), cgst, sgst };
+  }
 }
 
 function loadTabs(): { bills: Bill[]; activeId?: string } | null {
@@ -183,7 +205,9 @@ export default function PosPage() {
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
   );
 
-  const taxPercent = user?.taxPercent ?? 0;
+  const taxEnabled = Boolean(user?.taxEnabled ?? (user?.taxPercent ? user.taxPercent > 0 : false));
+  const taxInclusive = user?.taxInclusive !== false;
+  const taxPercent = taxEnabled ? (user?.taxPercent ?? 0) : 0;
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -441,8 +465,8 @@ export default function PosPage() {
   }, [activeBill]);
 
   const { subtotal, tax, total } = useMemo(
-    () => billTotal(activeBill ?? { id: '', label: '', lines: [] }, taxPercent),
-    [activeBill, taxPercent]
+    () => billTotal(activeBill ?? { id: '', label: '', lines: [] }, taxPercent, taxEnabled, taxInclusive),
+    [activeBill, taxPercent, taxEnabled, taxInclusive]
   );
 
   function updateActiveBill(updater: (b: Bill) => Bill) {
@@ -552,7 +576,7 @@ export default function PosPage() {
     const target = bills.find((b) => b.id === id);
     if (target && target.lines.length > 0) {
       const ok = window.confirm(
-        `"${target.label}" still has items (₹${billTotal(target, taxPercent).total.toFixed(
+        `"${target.label}" still has items (₹${billTotal(target, taxPercent, taxEnabled, taxInclusive).total.toFixed(
           2
         )}). Close and discard it?`
       );
@@ -757,7 +781,14 @@ export default function PosPage() {
           ? `SPLIT (Cash: ₹${(details.cashAmount || 0).toFixed(2)} + UPI: ₹${(details.upiAmount || 0).toFixed(2)})`
           : (details.paymentMethod || 'UPI').toUpperCase();
 
-        const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill No: *${invNumber}*${activeBill.label ? ` (Table: ${activeBill.label})` : ''}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${discountText}${billTax > 0 ? `\nTax (${user?.taxPercent || 0}%): ₹${billTax.toFixed(2)}` : ''}\n*Total Amount: ₹${billTotal.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `PAID via ${splitText}`}\n----------------------------------\n\n${details.paymentMethod === 'split' ? `(Remaining UPI: ₹${(details.upiAmount || 0).toFixed(2)} payable via QR)\n` : ''}Thank you for visiting us!`;
+        const halfRate = +(taxPercent / 2).toFixed(2);
+        const taxText = taxPercent > 0 && billTax > 0
+          ? `\nCGST (${halfRate}%): ₹${(billTax / 2).toFixed(2)}\nSGST (${halfRate}%): ₹${(billTax / 2).toFixed(2)}${taxInclusive ? ' (Included in item prices)' : ''}`
+          : '';
+        const gstinHeader = user?.gstin ? `\nGSTIN: ${user.gstin}` : '';
+        const fssaiHeader = user?.fssai ? `\nFSSAI: ${user.fssai}` : '';
+
+        const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*${gstinHeader}${fssaiHeader}\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill No: *${invNumber}*${activeBill.label ? ` (Table: ${activeBill.label})` : ''}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${discountText}${taxText}\n*Total Amount: ₹${billTotal.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `PAID via ${splitText}`}\n----------------------------------\n\n${details.paymentMethod === 'split' ? `(Remaining UPI: ₹${(details.upiAmount || 0).toFixed(2)} payable via QR)\n` : ''}Thank you for visiting us!`;
 
         // Microtick to ensure ReceiptCard receives invoiceNumber before snapshot
         await new Promise((r) => setTimeout(r, 120));
@@ -1100,7 +1131,7 @@ export default function PosPage() {
           {/* Bill tabs */}
           <div className="tabbar">
         {bills.map((b) => {
-          const t = billTotal(b, taxPercent);
+          const t = billTotal(b, taxPercent, taxEnabled, taxInclusive);
           return (
             <div
               key={b.id}
@@ -1425,20 +1456,44 @@ export default function PosPage() {
               ＃ Add custom amount
             </button>
 
-            <div className="totals-row">
-              <span>Subtotal</span>
-              <span>₹{subtotal.toFixed(2)}</span>
-            </div>
-            {taxPercent > 0 && (
-              <div className="totals-row">
-                <span>Tax ({taxPercent}%)</span>
-                <span>₹{tax.toFixed(2)}</span>
+            {taxEnabled && taxPercent > 0 ? (
+              taxInclusive ? (
+                <>
+                  <div className="totals-row">
+                    <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Taxable Base</span>
+                    <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>₹{subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="totals-row">
+                    <span style={{ fontSize: '0.82rem', color: '#38bdf8' }}>CGST ({(taxPercent / 2).toFixed(1)}%) + SGST ({(taxPercent / 2).toFixed(1)}%)</span>
+                    <span style={{ fontSize: '0.82rem', color: '#38bdf8' }}>₹{tax.toFixed(2)}</span>
+                  </div>
+                  <div className="totals-row grand">
+                    <span>Total <small style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>(Incl. GST)</small></span>
+                    <span>₹{total.toFixed(2)}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="totals-row">
+                    <span>Subtotal</span>
+                    <span>₹{subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="totals-row">
+                    <span style={{ color: '#38bdf8' }}>CGST ({(taxPercent / 2).toFixed(1)}%) + SGST ({(taxPercent / 2).toFixed(1)}%)</span>
+                    <span style={{ color: '#38bdf8' }}>₹{tax.toFixed(2)}</span>
+                  </div>
+                  <div className="totals-row grand">
+                    <span>Total</span>
+                    <span>₹{total.toFixed(2)}</span>
+                  </div>
+                </>
+              )
+            ) : (
+              <div className="totals-row grand">
+                <span>Total</span>
+                <span>₹{total.toFixed(2)}</span>
               </div>
             )}
-            <div className="totals-row grand">
-              <span>Total</span>
-              <span>₹{total.toFixed(2)}</span>
-            </div>
 
             <div className="cart-actions" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {/* Row 1: Clear and Pay */}
@@ -1575,8 +1630,10 @@ export default function PosPage() {
       {showPayment && (
         <PaymentModal
           amount={total}
-          subtotal={subtotal}
+          subtotal={activeBill ? activeBill.lines.reduce((s, l) => s + l.price * l.qty, 0) : 0}
           taxPercent={taxPercent}
+          taxEnabled={taxEnabled}
+          taxInclusive={taxInclusive}
           upiId={user?.upiId ?? null}
           payeeName={user?.payeeName ?? null}
           storeName={user?.storeName ?? 'BillKaro'}

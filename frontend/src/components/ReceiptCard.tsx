@@ -80,7 +80,9 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
           {user.storeName || 'BillKaro POS'}
         </h2>
         {user.address && <div style={{ fontSize: '13px', color: '#64748b' }}>{user.address}</div>}
-        {user.phone && <div style={{ fontSize: '13px', color: '#64748b' }}>Ph: {user.phone}</div>}
+        {user.phone && <div style={{ fontSize: '13px', color: '#64748b' }}>Mob No: {user.phone}</div>}
+        {user.gstin && <div style={{ fontSize: '12px', fontWeight: '700', color: '#0369a1', marginTop: '2px' }}>GSTIN: {user.gstin}</div>}
+        {user.fssai && <div style={{ fontSize: '12px', color: '#64748b' }}>FSSAI: {user.fssai}</div>}
         
         <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '14px', color: '#475569' }}>
           <span style={{ color: '#0f172a', fontWeight: '800' }}>Bill No: {billNumber}</span>
@@ -118,18 +120,14 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
             const catalogItem = items?.find((i) => i.id === line.itemId);
             const desc = getItemDesc(line) || (catalogItem ? getItemDesc(catalogItem) : '');
             return (
-              <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '10px 0', verticalAlign: 'top' }}>
-                  <div style={{ fontWeight: '600', color: '#1e293b' }}>{line.name}</div>
-                  {desc ? (
-                    <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '400', marginTop: '2px', lineHeight: '1.3' }}>
-                      {desc}
-                    </div>
-                  ) : null}
+              <tr key={idx} style={{ borderBottom: '1px dotted #e2e8f0' }}>
+                <td style={{ padding: '8px 0', maxWidth: '180px' }}>
+                  <div style={{ fontWeight: '600' }}>{line.name}</div>
+                  {desc && <div style={{ fontSize: '11px', color: '#64748b' }}>{desc}</div>}
                 </td>
-                <td style={{ padding: '10px 0', textAlign: 'center', verticalAlign: 'top' }}>{line.qty}</td>
-                <td style={{ padding: '10px 0', textAlign: 'right', color: '#64748b', verticalAlign: 'top' }}>₹{line.price.toFixed(2)}</td>
-                <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: '700', color: '#0f172a', verticalAlign: 'top' }}>
+                <td style={{ padding: '8px 0', textAlign: 'center', color: '#475569' }}>{line.qty}</td>
+                <td style={{ padding: '8px 0', textAlign: 'right', color: '#475569' }}>₹{line.price.toFixed(2)}</td>
+                <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: '600' }}>
                   ₹{(line.price * line.qty).toFixed(2)}
                 </td>
               </tr>
@@ -139,39 +137,61 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
       </table>
 
       {/* Totals */}
-      <div style={{ borderTop: '2px dashed #cbd5e1', paddingTop: '14px', fontSize: '14px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#64748b' }}>
-          <span>Subtotal</span>
-          <span>₹{subtotal.toFixed(2)}</span>
-        </div>
-        {discountAmount !== undefined && discountAmount > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#16a34a', fontWeight: 600 }}>
-            <span>Discount {discountType === 'percent' ? `(${discountValue}%)` : ''}</span>
-            <span>- ₹{discountAmount.toFixed(2)}</span>
+      {(() => {
+        const isTaxEnabled = user?.taxEnabled ?? (user?.taxPercent ? user.taxPercent > 0 : false);
+        const isTaxInclusive = user?.taxInclusive !== false;
+        const taxRate = isTaxEnabled ? (user.taxPercent || 0) : 0;
+        const halfRate = +(taxRate / 2).toFixed(2);
+        const cgst = +(subtotal * (halfRate / 100)).toFixed(2);
+        const sgst = +(subtotal * (halfRate / 100)).toFixed(2);
+
+        return (
+          <div style={{ borderTop: '2px dashed #cbd5e1', paddingTop: '14px', fontSize: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#64748b' }}>
+              <span>{taxRate > 0 && isTaxInclusive ? 'Sub Total (Taxable)' : 'Subtotal'}</span>
+              <span>₹{subtotal.toFixed(2)}</span>
+            </div>
+            {discountAmount !== undefined && discountAmount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#16a34a', fontWeight: 600 }}>
+                <span>Discount {discountType === 'percent' ? `(${discountValue}%)` : ''}</span>
+                <span>- ₹{discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            {taxRate > 0 && tax > 0 && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', color: '#64748b' }}>
+                  <span>CGST ({halfRate}%)</span>
+                  <span>₹{cgst.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#64748b' }}>
+                  <span>SGST ({halfRate}%)</span>
+                  <span>₹{sgst.toFixed(2)}</span>
+                </div>
+              </>
+            )}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginTop: '10px',
+                paddingTop: '10px',
+                borderTop: '2px solid #0f172a',
+                fontSize: '20px',
+                fontWeight: '800',
+                color: '#0f172a',
+              }}
+            >
+              <span>Grand Total</span>
+              <span>₹{total.toFixed(2)}</span>
+            </div>
+            {taxRate > 0 && isTaxInclusive && (
+              <div style={{ textAlign: 'center', fontSize: '11px', color: '#64748b', fontStyle: 'italic', marginTop: '4px' }}>
+                (Prices are inclusive of GST)
+              </div>
+            )}
           </div>
-        )}
-        {tax > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#64748b' }}>
-            <span>Tax ({user.taxPercent || 0}%)</span>
-            <span>₹{tax.toFixed(2)}</span>
-          </div>
-        )}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            marginTop: '10px',
-            paddingTop: '10px',
-            borderTop: '2px solid #0f172a',
-            fontSize: '20px',
-            fontWeight: '800',
-            color: '#0f172a',
-          }}
-        >
-          <span>Grand Total</span>
-          <span>₹{total.toFixed(2)}</span>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* UPI QR Code */}
       {qrUrl && (
