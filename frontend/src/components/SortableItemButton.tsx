@@ -29,11 +29,12 @@ export default function SortableItemButton({ item, qty, locked, onTap, onDecreme
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    background: isOutOfStock ? '#475569' : item.color || '#2563eb',
+    background: isOutOfStock ? '#334155' : item.color || '#2563eb',
     opacity: isOutOfStock ? 0.65 : 1,
     cursor: locked ? (isOutOfStock ? 'not-allowed' : 'pointer') : 'grab',
     touchAction: locked ? 'auto' : 'none',
     zIndex: isDragging ? 99 : 'auto',
+    border: isOutOfStock ? '1.5px solid rgba(239, 68, 68, 0.55)' : undefined,
   };
 
   return (
@@ -66,14 +67,6 @@ export default function SortableItemButton({ item, qty, locked, onTap, onDecreme
         </span>
       )}
 
-      {isOutOfStock && <span className="stock-badge out">Out of Stock</span>}
-      {!isOutOfStock && isLowStock && (
-        <span className="stock-badge low">Stock: {item.stockQuantity}</span>
-      )}
-      {!isOutOfStock && !isLowStock && item.stockQuantity !== null && item.stockQuantity !== undefined && (
-        <span className="stock-badge normal">Stock: {item.stockQuantity}</span>
-      )}
-
       {!locked && (
         <span
           className="edit-dot"
@@ -91,7 +84,43 @@ export default function SortableItemButton({ item, qty, locked, onTap, onDecreme
       )}
 
       <span className="name">{item.name}</span>
-      <span className="price">₹{item.price.toFixed(2)}</span>
+
+      <div className="item-btn-footer" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', width: '100%' }}>
+          <span
+            className="price"
+            style={{
+              textDecoration: isOutOfStock ? 'line-through' : undefined,
+              opacity: isOutOfStock ? 0.6 : 0.95,
+              fontSize: isOutOfStock ? '13px' : undefined,
+            }}
+          >
+            ₹{item.price % 1 === 0 ? item.price.toFixed(0) : item.price.toFixed(2)}
+          </span>
+          {!isOutOfStock && isLowStock && (
+            <span className="stock-badge low">⚠️ {item.stockQuantity}</span>
+          )}
+          {!isOutOfStock && !isLowStock && item.stockQuantity !== null && item.stockQuantity !== undefined && (
+            <span className="stock-badge normal">{item.stockQuantity}</span>
+          )}
+        </div>
+
+        {isOutOfStock && (
+          <div
+            className="stock-badge out"
+            style={{
+              width: '100%',
+              justifyContent: 'center',
+              textAlign: 'center',
+              padding: '2px 4px',
+              fontSize: '9.5px',
+              letterSpacing: '0.4px',
+            }}
+          >
+            Out of Stock
+          </div>
+        )}
+      </div>
     </button>
   );
 }

@@ -130,35 +130,6 @@ export default function ItemEditorModal({
               <option key={c} value={c} />
             ))}
           </datalist>
-
-          {/* Category Chips */}
-          {registeredCategories.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, maxHeight: '80px', overflowY: 'auto' }}>
-              {registeredCategories.map((c) => {
-                const isSelected = category.trim().toLowerCase() === c.toLowerCase();
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`btn ${isSelected ? 'primary' : 'ghost'}`}
-                    style={{
-                      padding: '3px 10px',
-                      fontSize: '0.78rem',
-                      borderRadius: 16,
-                      lineHeight: 1.4,
-                      border: isSelected ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.15)',
-                      background: isSelected ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255,255,255,0.05)',
-                      color: isSelected ? '#38bdf8' : 'var(--text)',
-                      fontWeight: isSelected ? 700 : 500,
-                    }}
-                    onClick={() => setCategory(c)}
-                  >
-                    {c}
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </div>
 
         <div className="field">

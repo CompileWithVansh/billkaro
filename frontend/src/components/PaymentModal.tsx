@@ -179,7 +179,7 @@ export default function PaymentModal({
         </div>
 
         {/* 1. QR Code / Payment Method View FIRST at Top */}
-        {method === 'upi' && (
+        {(method === 'upi' || method === 'split') && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '2px 0 10px' }}>
             {error ? (
               <div className="error-box" style={{ width: '100%', marginBottom: 8 }}>{error}</div>
@@ -200,7 +200,7 @@ export default function PaymentModal({
                 {dataUrl ? (
                   <img
                     src={dataUrl}
-                    alt="Payment QR"
+                    alt={method === 'split' ? 'Split Payment QR' : 'Payment QR'}
                     width={200}
                     height={200}
                     style={{ borderRadius: 8, display: 'block' }}
@@ -213,7 +213,13 @@ export default function PaymentModal({
               </div>
             )}
             <div className="qr-note" style={{ fontSize: '0.78rem', color: '#94a3b8', margin: 0, textAlign: 'center' }}>
-              Scan with any UPI App (Paytm / PhonePe / GPay)
+              {method === 'split' ? (
+                <span>
+                  Scan UPI QR for balance: <strong style={{ color: '#38bdf8' }}>₹{Number(splitUpi || finalPayable).toFixed(2)}</strong>
+                </span>
+              ) : (
+                'Scan with any UPI App (Paytm / PhonePe / GPay)'
+              )}
             </div>
           </div>
         )}
@@ -239,23 +245,175 @@ export default function PaymentModal({
           </div>
         )}
 
+        {method === 'udhaar' && (
+          <div
+            style={{
+              background: 'rgba(56, 189, 248, 0.1)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: 14,
+              padding: '16px 20px',
+              margin: '6px 0 12px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '2.2rem', marginBottom: 4 }}>📋</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#38bdf8' }}>
+              Customer Khata (Udhaar / Credit)
+            </div>
+            <div style={{ fontSize: '0.82rem', color: '#94a3b8', marginTop: 2 }}>
+              Record unpaid bill to customer khata ledger
+            </div>
+          </div>
+        )}
+
+        {/* 2. Total Payable Amount Underneath QR */}
+        <div style={{ textAlign: 'center', margin: '4px 0 10px' }}>
+          <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+            Total Payable
+          </div>
+          <div className="qr-amount" style={{ margin: '2px 0', fontSize: '2rem', fontWeight: 800, color: '#38bdf8', lineHeight: 1.1 }}>
+            ₹{finalPayable.toFixed(2)}
+          </div>
+          {discountAmount > 0 && (
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 3 }}>
+              Subtotal: ₹{baseSubtotal.toFixed(2)} • Discount: -₹{discountAmount.toFixed(2)}
+            </div>
+          )}
+        </div>
+
+        {/* 3. Payment Method Tabs (UPI, Cash, Split, Udhaar) - Prominent, Easy Tap */}
+        <div style={{ margin: '4px 0 12px' }}>
+          <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Payment Method
+          </div>
+          <div className="payment-tabs" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+            <button
+              type="button"
+              className={`btn ${method === 'upi' ? 'primary' : 'ghost'}`}
+              style={{
+                padding: '8px 4px',
+                minHeight: 46,
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                borderRadius: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                border: method === 'upi' ? '2px solid #38bdf8' : '1px solid #334155',
+                background: method === 'upi' ? 'rgba(56, 189, 248, 0.2)' : 'var(--panel-2, #1e293b)',
+                color: method === 'upi' ? '#38bdf8' : 'var(--text)',
+                boxShadow: method === 'upi' ? '0 0 10px rgba(56, 189, 248, 0.3)' : 'none',
+              }}
+              disabled={isSubmitting}
+              onClick={() => setMethod('upi')}
+            >
+              <span style={{ fontSize: '1.15rem' }}>📱</span>
+              <span>UPI QR</span>
+            </button>
+            <button
+              type="button"
+              className={`btn ${method === 'cash' ? 'primary' : 'ghost'}`}
+              style={{
+                padding: '8px 4px',
+                minHeight: 46,
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                borderRadius: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                border: method === 'cash' ? '2px solid #4ade80' : '1px solid #334155',
+                background: method === 'cash' ? 'rgba(74, 222, 128, 0.2)' : 'var(--panel-2, #1e293b)',
+                color: method === 'cash' ? '#4ade80' : 'var(--text)',
+                boxShadow: method === 'cash' ? '0 0 10px rgba(74, 222, 128, 0.3)' : 'none',
+              }}
+              disabled={isSubmitting}
+              onClick={() => setMethod('cash')}
+            >
+              <span style={{ fontSize: '1.15rem' }}>💵</span>
+              <span>Cash</span>
+            </button>
+            <button
+              type="button"
+              className={`btn ${method === 'split' ? 'primary' : 'ghost'}`}
+              style={{
+                padding: '8px 4px',
+                minHeight: 46,
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                borderRadius: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                border: method === 'split' ? '2px solid #f59e0b' : '1px solid #334155',
+                background: method === 'split' ? 'rgba(245, 158, 11, 0.2)' : 'var(--panel-2, #1e293b)',
+                color: method === 'split' ? '#f59e0b' : 'var(--text)',
+                boxShadow: method === 'split' ? '0 0 10px rgba(245, 158, 11, 0.3)' : 'none',
+              }}
+              disabled={isSubmitting}
+              onClick={() => {
+                setMethod('split');
+                if (!splitCash && !splitUpi) {
+                  setSplitCash('');
+                  setSplitUpi(String(finalPayable));
+                }
+              }}
+            >
+              <span style={{ fontSize: '1.15rem' }}>💳</span>
+              <span>Split</span>
+            </button>
+            <button
+              type="button"
+              className={`btn ${method === 'udhaar' ? 'primary' : 'ghost'}`}
+              style={{
+                padding: '8px 4px',
+                minHeight: 46,
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                borderRadius: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                border: method === 'udhaar' ? '2px solid #a855f7' : '1px solid #334155',
+                background: method === 'udhaar' ? 'rgba(168, 85, 247, 0.2)' : 'var(--panel-2, #1e293b)',
+                color: method === 'udhaar' ? '#c084fc' : 'var(--text)',
+                boxShadow: method === 'udhaar' ? '0 0 10px rgba(168, 85, 247, 0.3)' : 'none',
+              }}
+              disabled={isSubmitting}
+              onClick={() => setMethod('udhaar')}
+            >
+              <span style={{ fontSize: '1.15rem' }}>📋</span>
+              <span>Udhaar</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 4. Mode-Specific Inputs in Thumb Zone (Split Cash/UPI or Udhaar Name/Phone) */}
         {method === 'split' && (
           <div
             style={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 10,
-              margin: '6px 0 12px',
+              gap: 8,
+              margin: '0 0 12px',
               background: 'var(--panel-2, #1e293b)',
               padding: 12,
-              borderRadius: 14,
+              borderRadius: 12,
               border: '1px solid var(--border)',
             }}
           >
             <div style={{ fontSize: '0.82rem', color: '#94a3b8', fontWeight: 600 }}>Split Bill (Cash + UPI)</div>
             <div style={{ display: 'flex', gap: 10 }}>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: 4, fontWeight: 600 }}>💵 Cash Amount</label>
+                <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: 4, fontWeight: 600 }}>💵 Cash Received</label>
                 <input
                   type="number"
                   min="0"
@@ -263,11 +421,11 @@ export default function PaymentModal({
                   value={splitCash}
                   onChange={(e) => handleSplitCashChange(e.target.value)}
                   placeholder="0.00"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#4ade80', fontWeight: 700, fontSize: '16px' }}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#4ade80', fontWeight: 700, fontSize: '16px' }}
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginBottom: 4, fontWeight: 600 }}>📱 UPI Amount (QR)</label>
+                <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: 4, fontWeight: 600 }}>📱 UPI Amount (QR)</label>
                 <input
                   type="number"
                   min="0"
@@ -275,30 +433,16 @@ export default function PaymentModal({
                   value={splitUpi}
                   onChange={(e) => handleSplitUpiChange(e.target.value)}
                   placeholder="0.00"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#38bdf8', fontWeight: 700, fontSize: '16px' }}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, background: '#0f172a', border: '1px solid #334155', color: '#38bdf8', fontWeight: 700, fontSize: '16px' }}
                 />
               </div>
             </div>
-
-            {Number(splitUpi) > 0 && (
-              <div style={{ marginTop: 4, textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 6 }}>
-                  Scan UPI QR for balance: <strong style={{ color: '#38bdf8' }}>₹{Number(splitUpi).toFixed(2)}</strong>
-                </div>
-                {dataUrl && (
-                  <div className="qr-box" style={{ padding: 8, display: 'inline-block', margin: 0, background: '#fff', borderRadius: 12 }}>
-                    <img src={dataUrl} alt="Split UPI QR" width={150} height={150} style={{ borderRadius: 6, display: 'block' }} />
-                  </div>
-                )}
-              </div>
-            )}
-            {error && <div className="error-box" style={{ color: '#ef4444', fontSize: '0.8rem', margin: 0 }}>{error}</div>}
+            {error && <div className="error-box" style={{ color: '#ef4444', fontSize: '0.8rem', margin: '4px 0 0' }}>{error}</div>}
           </div>
         )}
 
         {method === 'udhaar' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '6px 0 12px', background: 'var(--panel-2, #1e293b)', padding: 12, borderRadius: 14, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '0.82rem', color: '#94a3b8', fontWeight: 600 }}>Customer Khata (Udhaar / Credit)</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '0 0 12px', background: 'var(--panel-2, #1e293b)', padding: 12, borderRadius: 12, border: '1px solid var(--border)' }}>
             <div className="field" style={{ margin: 0 }}>
               <label style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>Customer Name *</label>
               <input
@@ -324,29 +468,14 @@ export default function PaymentModal({
           </div>
         )}
 
-        {/* 2. Total Payable Amount Underneath QR */}
-        <div style={{ textAlign: 'center', margin: '4px 0 10px' }}>
-          <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
-            Total Payable
-          </div>
-          <div className="qr-amount" style={{ margin: '2px 0', fontSize: '2rem', fontWeight: 800, color: '#38bdf8', lineHeight: 1.1 }}>
-            ₹{finalPayable.toFixed(2)}
-          </div>
-          {discountAmount > 0 && (
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 3 }}>
-              Subtotal: ₹{baseSubtotal.toFixed(2)} • Discount: -₹{discountAmount.toFixed(2)}
-            </div>
-          )}
-        </div>
-
-        {/* 3. Apply Discount Section in Thumb Reach Zone */}
+        {/* 5. Apply Discount Section */}
         <div
           style={{
             background: 'var(--panel-2, #1e293b)',
             border: '1px solid var(--border, #334155)',
             borderRadius: 12,
             padding: '10px 14px',
-            margin: '0 0 12px',
+            margin: '0 0 14px',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -408,52 +537,6 @@ export default function PaymentModal({
               {taxRate > 0 && <span style={{ color: '#94a3b8', fontWeight: 400 }}>Tax on ₹{taxableSubtotal.toFixed(2)}: ₹{calculatedTax.toFixed(2)}</span>}
             </div>
           )}
-        </div>
-
-        {/* 4. Payment Method Tabs (UPI, Cash, Split, Udhaar) */}
-        <div className="payment-tabs" style={{ display: 'flex', gap: 6, margin: '0 0 14px', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className={`btn sm-btn ${method === 'upi' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1, minHeight: 40 }}
-            disabled={isSubmitting}
-            onClick={() => setMethod('upi')}
-          >
-            📱 UPI QR
-          </button>
-          <button
-            type="button"
-            className={`btn sm-btn ${method === 'cash' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1, minHeight: 40 }}
-            disabled={isSubmitting}
-            onClick={() => setMethod('cash')}
-          >
-            💵 Cash
-          </button>
-          <button
-            type="button"
-            className={`btn sm-btn ${method === 'split' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1, minHeight: 40 }}
-            disabled={isSubmitting}
-            onClick={() => {
-              setMethod('split');
-              if (!splitCash && !splitUpi) {
-                setSplitCash('');
-                setSplitUpi(String(finalPayable));
-              }
-            }}
-          >
-            💳 Split
-          </button>
-          <button
-            type="button"
-            className={`btn sm-btn ${method === 'udhaar' ? 'primary' : 'ghost'}`}
-            style={{ flex: 1, minWidth: 70, opacity: isSubmitting ? 0.6 : 1, minHeight: 40 }}
-            disabled={isSubmitting}
-            onClick={() => setMethod('udhaar')}
-          >
-            📋 Udhaar
-          </button>
         </div>
 
         {/* 5 & 6. Paid Button & Below Actions */}

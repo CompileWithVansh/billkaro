@@ -171,11 +171,25 @@ export default function SettingsTab() {
 
           <button
             type="button"
-            className="btn danger ghost block"
-            style={{ padding: '12px', fontSize: '0.9rem', fontWeight: 700, borderRadius: 12, borderColor: '#ef4444', color: '#ef4444' }}
+            className="btn block"
+            style={{
+              padding: '14px',
+              fontSize: '1rem',
+              fontWeight: 800,
+              borderRadius: 12,
+              background: '#ef4444',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.35)',
+              cursor: 'pointer',
+            }}
             onClick={handleLogout}
           >
-            🚪 Log Out of Store
+            <span>🚪</span>
+            <span>Log Out of Store</span>
           </button>
         </div>
       </div>

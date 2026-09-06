@@ -271,6 +271,19 @@ export default function PosPage() {
     return list;
   }, [items, showCategorySidebar, selectedCategory, itemSearch]);
 
+  const isAnyModalOpen =
+    showEditor ||
+    showPayment ||
+    showHistory ||
+    showInventory ||
+    showConnectKds ||
+    showMenuScanner ||
+    showArrangeCategories ||
+    showSettings ||
+    customOpen ||
+    Boolean(qtyEditLine) ||
+    mobileMainTab !== 'billing';
+
   function getCategoryIcon(cat: string): string {
     const c = cat.toLowerCase();
     if (c === 'all') return '🛒';
@@ -1289,7 +1302,7 @@ export default function PosPage() {
           )}
 
           {/* Sticky Mobile Floating Cart Bar */}
-          {activeBill && activeBill.lines.length > 0 && (
+          {!isAnyModalOpen && activeBill && activeBill.lines.length > 0 && (
             <div
               className={`mobile-floating-cart ${showCategorySidebar ? 'with-sidebar' : ''}`}
               onClick={() => setMobileView('cart')}

@@ -606,24 +606,25 @@ select {
 }
 
 .stock-badge {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 9.5px;
   font-weight: 800;
-  padding: 2px 7px;
-  border-radius: 999px;
+  padding: 1px 5px;
+  border-radius: 4px;
   letter-spacing: 0.2px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-  text-transform: uppercase;
+  line-height: 1.2;
 }
 .stock-badge.out {
   background: #ef4444;
   color: #ffffff;
+  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.4);
+  text-transform: uppercase;
 }
 .stock-badge.low {
   background: #f59e0b;
   color: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 .stock-badge.normal {
   background: rgba(0, 0, 0, 0.45);
@@ -789,7 +790,7 @@ select {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 100;
+  z-index: 10050;
 }
 .modal {
   width: 100%;
@@ -971,7 +972,7 @@ select {
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), 0 0 16px rgba(37, 99, 235, 0.35);
     border-radius: 16px;
     padding: 10px 16px;
-    z-index: 9999;
+    z-index: 990;
     cursor: pointer;
   }
   .m-cart-info {
