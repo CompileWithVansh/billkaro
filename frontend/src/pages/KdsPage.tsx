@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { useAuth } from '../auth/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { api, getToken, setKdsToken } from '../api';
+import { getItemDesc } from '../types';
 
 interface KdsTicket {
   id: string | number;
@@ -439,13 +440,15 @@ export default function KdsPage() {
                               </span>
                             )}
                           </div>
-                          {line.description &&
-                            line.description.trim() &&
-                            line.description.trim().toLowerCase() !== (line.category || '').trim().toLowerCase() && (
+                          {(() => {
+                            const desc = getItemDesc(line);
+                            if (!desc) return null;
+                            return (
                               <span style={{ fontSize: '0.84rem', color: '#fde68a', fontWeight: 500, marginTop: 2 }}>
-                                📝 {line.description}
+                                📝 {desc}
                               </span>
-                            )}
+                            );
+                          })()}
                         </div>
                         <span style={{ color: isNew ? '#f59e0b' : '#38bdf8', fontWeight: 700, marginLeft: 12 }}>x{line.qty}</span>
                       </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { api, getToken } from '../api';
-import type { User } from '../types';
+import { getItemDesc, type User } from '../types';
 
 interface KdsTicket {
   id: string | number;
@@ -302,13 +302,15 @@ export default function KitchenTab({ user }: Props) {
                                   </span>
                                 )}
                               </div>
-                              {item.description &&
-                                item.description.trim() &&
-                                item.description.trim().toLowerCase() !== (item.category || '').trim().toLowerCase() && (
+                              {(() => {
+                                const desc = getItemDesc(item);
+                                if (!desc) return null;
+                                return (
                                   <span style={{ fontSize: '0.8rem', color: '#fde68a', fontWeight: 500, marginTop: 2 }}>
-                                    📝 {item.description}
+                                    📝 {desc}
                                   </span>
-                                )}
+                                );
+                              })()}
                             </div>
                             <span style={{ fontWeight: 800, color: isNew ? '#f59e0b' : '#38bdf8', marginLeft: 8 }}>
                               x{item.qty}

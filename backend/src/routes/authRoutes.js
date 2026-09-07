@@ -154,13 +154,40 @@ router.get(
   })
 );
 
-// PUT /api/auth/settings (Cashier/Owner only)
+// PUT /api/auth/change-password (Owner/User password update)
+router.put(
+  '/change-password',
+  requireAuth,
+  requireUserRole,
+  wrap(async (req, res) => {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+    if (typeof newPassword !== 'string' || newPassword.length < 6 || newPassword.length > 128) {
+      return res.status(400).json({ error: 'New password must be between 6 and 128 characters' });
+    }
+    const user = await usersRepo.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const passwordValid = bcrypt.compareSync(currentPassword, user.password_hash);
+    if (!passwordValid) {
+      return res.status(401).json({ error: 'Incorrect current password' });
+    }
+
+    const newHash = bcrypt.hashSync(newPassword, 10);
+    await usersRepo.updatePassword(req.userId, newHash);
+    res.json({ ok: true, message: 'Password updated successfully' });
+  })
+);
+
+// PUT /api/auth/settings (Cashier/Owner only, UPI change strictly requires currentPassword)
 router.put(
   '/settings',
   requireAuth,
   requireUserRole,
   wrap(async (req, res) => {
-    const { storeName, upiId, payeeName, taxPercent, address, phone, gstin, fssai, taxEnabled, taxInclusive } = req.body || {};
+    const { storeName, upiId, payeeName, taxPercent, address, phone, gstin, fssai, taxEnabled, taxInclusive, currentPassword } = req.body || {};
     
     let cleanStoreName = undefined;
     if (storeName !== undefined) {
@@ -187,6 +214,29 @@ router.put(
     const cleanFssai = fssai !== undefined ? (fssai ? sanitizeText(fssai).substring(0, 30) : null) : undefined;
     const cleanTaxEnabled = taxEnabled !== undefined ? Boolean(taxEnabled) : undefined;
     const cleanTaxInclusive = taxInclusive !== undefined ? Boolean(taxInclusive) : undefined;
+
+    const existing = await usersRepo.findById(req.userId);
+    if (!existing) return res.status(404).json({ error: 'User not found' });
+
+    // Security Lock: If UPI ID or Payee Name is being modified, require owner password
+    const upiChanging = cleanUpiId !== undefined && (cleanUpiId || '') !== (existing.upi_id || '');
+    const payeeChanging = cleanPayeeName !== undefined && (cleanPayeeName || '') !== (existing.payee_name || '');
+
+    if (upiChanging || payeeChanging) {
+      if (!currentPassword || typeof currentPassword !== 'string') {
+        return res.status(403).json({
+          error: 'Current owner password is required to change UPI payment details',
+          requiresPassword: true,
+        });
+      }
+      const valid = bcrypt.compareSync(currentPassword, existing.password_hash);
+      if (!valid) {
+        return res.status(403).json({
+          error: 'Incorrect owner password. UPI payment details not updated.',
+          requiresPassword: true,
+        });
+      }
+    }
 
     const updated = await usersRepo.update(req.userId, {
       storeName: cleanStoreName,

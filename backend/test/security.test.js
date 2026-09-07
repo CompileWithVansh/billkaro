@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import { createCorsOriginValidator, getCorsOptions } from '../src/middleware/corsConfig.js';
 import { loginLimiter, kdsPairLimiter, registerLimiter, apiLimiter } from '../src/middleware/rateLimiter.js';
+import bcrypt from 'bcryptjs';
 
 test('CORS Validator - Production Mode', async (t) => {
   process.env.CORS_ORIGIN = 'https://billkaro-i6h5.onrender.com,https://pos.mystore.com';
@@ -611,5 +612,56 @@ test('Financial Integrity - Discount Calculation & Split Payment Balancing', () 
   assert.equal(upi, 272.5);
   assert.equal(cash + upi, splitTotal);
 });
+
+test('Security Lock - UPI ID Change & Password Policy Verification', () => {
+  // Verify password policy
+  const isValidPass = (p) => typeof p === 'string' && p.length >= 6 && p.length <= 128;
+  assert.equal(isValidPass('12345'), false, 'Password under 6 chars should be rejected');
+  assert.equal(isValidPass('secret123'), true, 'Valid password should be accepted');
+  assert.equal(isValidPass('a'.repeat(129)), false, 'Password over 128 chars should be rejected');
+
+  // Verify UPI change detection logic
+  const existingUser = {
+    upi_id: 'owner@okaxis',
+    payee_name: 'Royal Biryani',
+    password_hash: bcrypt.hashSync('correct_owner_pass', 10),
+  };
+
+  function checkUpiSecurity(existing, newUpi, newPayee, providedPass) {
+    const cleanUpi = newUpi !== undefined ? (newUpi || null) : undefined;
+    const cleanPayee = newPayee !== undefined ? (newPayee || null) : undefined;
+    const upiChanging = cleanUpi !== undefined && cleanUpi !== (existing.upi_id || null);
+    const payeeChanging = cleanPayee !== undefined && cleanPayee !== (existing.payee_name || null);
+
+    if (upiChanging || payeeChanging) {
+      if (!providedPass || typeof providedPass !== 'string') {
+        return { error: 'Current owner password is required to change UPI payment details', requiresPassword: true };
+      }
+      if (!bcrypt.compareSync(providedPass, existing.password_hash)) {
+        return { error: 'Incorrect owner password. UPI payment details not updated.', requiresPassword: true };
+      }
+    }
+    return { ok: true };
+  }
+
+  // Case 1: Changing store address or other field without touching UPI should NOT require password
+  assert.deepEqual(checkUpiSecurity(existingUser, undefined, undefined, undefined), { ok: true });
+  assert.deepEqual(checkUpiSecurity(existingUser, 'owner@okaxis', 'Royal Biryani', undefined), { ok: true });
+
+  // Case 2: Attempting to change UPI ID without password must be rejected
+  const blockedNoPass = checkUpiSecurity(existingUser, 'crook@okaxis', 'Royal Biryani', undefined);
+  assert.ok(blockedNoPass.error);
+  assert.equal(blockedNoPass.requiresPassword, true);
+
+  // Case 3: Attempting to change UPI ID with incorrect password must be rejected
+  const blockedBadPass = checkUpiSecurity(existingUser, 'crook@okaxis', 'Royal Biryani', 'wrong_pass');
+  assert.ok(blockedBadPass.error);
+  assert.equal(blockedBadPass.requiresPassword, true);
+
+  // Case 4: Changing UPI ID with valid owner password should succeed
+  const allowed = checkUpiSecurity(existingUser, 'newowner@okaxis', 'Royal Biryani', 'correct_owner_pass');
+  assert.deepEqual(allowed, { ok: true });
+});
+
 
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'billkaro-pwa-v30';
+const CACHE_NAME = 'billkaro-pwa-v31';
 
 
 self.addEventListener('install', (event) => {
@@ -20,8 +20,8 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
 
-  // Bypass API calls from service worker cache
-  if (url.pathname.startsWith('/api/')) return;
+  // Bypass API calls and manifest from service worker cache
+  if (url.pathname.startsWith('/api/') || url.pathname === '/manifest.webmanifest') return;
 
   // Network-First for HTML navigation so new code updates apply immediately
   if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {

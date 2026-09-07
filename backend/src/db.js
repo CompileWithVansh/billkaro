@@ -220,6 +220,13 @@ export const usersRepo = {
     );
     return rows[0] || null;
   },
+  async updatePassword(id, passwordHash) {
+    const { rows } = await getPool().query(
+      'UPDATE billkaro_users SET password_hash = $1 WHERE id = $2 RETURNING *',
+      [passwordHash, Number(id)]
+    );
+    return rows[0] || null;
+  },
 };
 
 // ---------------- Items ----------------

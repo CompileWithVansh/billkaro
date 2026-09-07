@@ -26,9 +26,61 @@ export default function SettingsModal({ onClose }: Props) {
   const numRate = Number(taxPercent) || 0;
   const halfRate = +(numRate / 2).toFixed(2);
 
+  const [upiPassword, setUpiPassword] = useState('');
+  const isUpiChanged =
+    (upiId.trim() || '') !== (user?.upiId || '') ||
+    (payeeName.trim() || '') !== (user?.payeeName || '');
+
+  // Password change state
+  const [currentPass, setCurrentPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [passBusy, setPassBusy] = useState(false);
+  const [passMsg, setPassMsg] = useState('');
+  const [passErr, setPassErr] = useState('');
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPassErr('');
+    setPassMsg('');
+    if (!currentPass) {
+      setPassErr('Please enter your current password.');
+      return;
+    }
+    if (newPass.length < 6) {
+      setPassErr('New password must be at least 6 characters.');
+      return;
+    }
+    if (newPass !== confirmPass) {
+      setPassErr('New passwords do not match.');
+      return;
+    }
+    setPassBusy(true);
+    try {
+      await api.put('/auth/change-password', {
+        currentPassword: currentPass,
+        newPassword: newPass,
+      });
+      setPassMsg('Password updated successfully!');
+      setCurrentPass('');
+      setNewPass('');
+      setConfirmPass('');
+      setTimeout(() => setPassMsg(''), 4000);
+    } catch (err: any) {
+      setPassErr(err?.response?.data?.error || 'Could not update password.');
+    } finally {
+      setPassBusy(false);
+    }
+  }
+
   async function save() {
     setBusy(true);
     setError('');
+    if (isUpiChanged && !upiPassword.trim()) {
+      setError('Owner password is required to change UPI payment destination.');
+      setBusy(false);
+      return;
+    }
     try {
       const res = await api.put('/auth/settings', {
         storeName: storeName.trim(),
@@ -41,6 +93,7 @@ export default function SettingsModal({ onClose }: Props) {
         taxEnabled,
         taxInclusive,
         taxPercent: taxEnabled ? (Number(taxPercent) || 0) : 0,
+        currentPassword: isUpiChanged ? upiPassword.trim() : undefined,
       });
       updateUser(res.data.user);
       onClose();
@@ -127,6 +180,25 @@ export default function SettingsModal({ onClose }: Props) {
               <label>Payee name on QR</label>
               <input value={payeeName} onChange={(e) => setPayeeName(e.target.value)} placeholder="e.g. Royal Biryani Center" />
             </div>
+
+            {/* Security lock indicator & confirmation */}
+            {isUpiChanged && (
+              <div style={{ marginTop: 12, background: 'rgba(234, 179, 8, 0.12)', border: '1px solid rgba(234, 179, 8, 0.4)', borderRadius: 8, padding: 10 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#fde047', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span>🔒</span> Security Lock: Owner Password Required
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#fef08a', marginBottom: 8 }}>
+                  To prevent payment diversion, enter your store password to confirm UPI changes.
+                </div>
+                <input
+                  type="password"
+                  value={upiPassword}
+                  onChange={(e) => setUpiPassword(e.target.value)}
+                  placeholder="Enter current owner password"
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '14px', borderRadius: 6, background: '#0f172a', border: '1px solid #eab308', color: '#fff' }}
+                />
+              </div>
+            )}
           </div>
 
           {/* SECTION 3: GST & Tax */}
@@ -268,6 +340,74 @@ export default function SettingsModal({ onClose }: Props) {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* SECTION 4: Account Security & Password */}
+          <div style={{ background: 'var(--panel-2, #1e293b)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#ec4899', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+              🔐 Account Security & Password
+            </div>
+
+            {passMsg && (
+              <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#6ee7b7', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600, marginBottom: 10 }}>
+                ✅ {passMsg}
+              </div>
+            )}
+
+            {passErr && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#fca5a5', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 10 }}>
+                ⚠️ {passErr}
+              </div>
+            )}
+
+            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="field">
+                <label style={{ fontSize: '0.76rem', color: '#94a3b8', display: 'block', marginBottom: 3 }}>
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={currentPass}
+                  onChange={(e) => setCurrentPass(e.target.value)}
+                  placeholder="Enter current password"
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div className="field">
+                  <label style={{ fontSize: '0.76rem', color: '#94a3b8', display: 'block', marginBottom: 3 }}>
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newPass}
+                    onChange={(e) => setNewPass(e.target.value)}
+                    placeholder="Min 6 characters"
+                  />
+                </div>
+
+                <div className="field">
+                  <label style={{ fontSize: '0.76rem', color: '#94a3b8', display: 'block', marginBottom: 3 }}>
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPass}
+                    onChange={(e) => setConfirmPass(e.target.value)}
+                    placeholder="Repeat new password"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="btn primary sm-btn"
+                disabled={passBusy}
+                style={{ alignSelf: 'flex-start', marginTop: 4, padding: '8px 14px', borderRadius: 8, fontWeight: 700 }}
+              >
+                {passBusy ? 'Updating…' : '🔑 Change Password'}
+              </button>
+            </form>
           </div>
         </div>
 

@@ -1689,6 +1689,7 @@ export default function PosPage() {
             setShowHistory(false);
             setShowSettings(false);
             setMobileMainTab('billing');
+            setMobileView('items');
           }}
         >
           <span className="mobile-nav-icon">🛒</span>

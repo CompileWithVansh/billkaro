@@ -33,10 +33,62 @@ export default function SettingsTab() {
     ? sampleGross
     : +(sampleGross + (sampleTaxable * (numRate / 100))).toFixed(2);
 
+  const [upiPassword, setUpiPassword] = useState('');
+  const isUpiChanged =
+    (upiId.trim() || '') !== (user?.upiId || '') ||
+    (payeeName.trim() || '') !== (user?.payeeName || '');
+
+  // Password change state
+  const [currentPass, setCurrentPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [passBusy, setPassBusy] = useState(false);
+  const [passMsg, setPassMsg] = useState('');
+  const [passErr, setPassErr] = useState('');
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPassErr('');
+    setPassMsg('');
+    if (!currentPass) {
+      setPassErr('Please enter your current password.');
+      return;
+    }
+    if (newPass.length < 6) {
+      setPassErr('New password must be at least 6 characters.');
+      return;
+    }
+    if (newPass !== confirmPass) {
+      setPassErr('New passwords do not match.');
+      return;
+    }
+    setPassBusy(true);
+    try {
+      await api.put('/auth/change-password', {
+        currentPassword: currentPass,
+        newPassword: newPass,
+      });
+      setPassMsg('Password updated successfully!');
+      setCurrentPass('');
+      setNewPass('');
+      setConfirmPass('');
+      setTimeout(() => setPassMsg(''), 4000);
+    } catch (err: any) {
+      setPassErr(err?.response?.data?.error || 'Could not update password.');
+    } finally {
+      setPassBusy(false);
+    }
+  }
+
   async function save() {
     setBusy(true);
     setError('');
     setSavedToast(false);
+    if (isUpiChanged && !upiPassword.trim()) {
+      setError('Owner password is required to change UPI payment destination.');
+      setBusy(false);
+      return;
+    }
     try {
       const res = await api.put('/auth/settings', {
         storeName: storeName.trim(),
@@ -49,8 +101,10 @@ export default function SettingsTab() {
         taxEnabled,
         taxInclusive,
         taxPercent: taxEnabled ? (Number(taxPercent) || 0) : 0,
+        currentPassword: isUpiChanged ? upiPassword.trim() : undefined,
       });
       updateUser(res.data.user);
+      setUpiPassword('');
       setSavedToast(true);
       setTimeout(() => setSavedToast(false), 3000);
     } catch (err: any) {
@@ -196,6 +250,25 @@ export default function SettingsTab() {
               style={{ width: '100%', padding: '10px 12px', fontSize: '16px', borderRadius: 8, background: 'var(--bg, #0f172a)', border: '1px solid var(--border)', color: '#f8fafc' }}
             />
           </div>
+
+          {/* Security lock indicator & confirmation */}
+          {isUpiChanged && (
+            <div style={{ marginTop: 14, background: 'rgba(234, 179, 8, 0.12)', border: '1px solid rgba(234, 179, 8, 0.4)', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fde047', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span>🔒</span> Security Lock: Owner Password Required
+              </div>
+              <div style={{ fontSize: '0.74rem', color: '#fef08a', marginBottom: 8, lineHeight: 1.4 }}>
+                To protect against payment diversion, please enter your store password to confirm changes to your UPI payment destination.
+              </div>
+              <input
+                type="password"
+                value={upiPassword}
+                onChange={(e) => setUpiPassword(e.target.value)}
+                placeholder="Enter current owner password"
+                style={{ width: '100%', padding: '10px 12px', fontSize: '15px', borderRadius: 8, background: '#0f172a', border: '1px solid #eab308', color: '#f8fafc' }}
+              />
+            </div>
+          )}
         </div>
 
         {/* SECTION 3: GST & Tax Configuration */}
@@ -365,6 +438,77 @@ export default function SettingsTab() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* SECTION 4: Account Security & Password */}
+        <div style={{ background: 'var(--panel-2, #1e293b)', border: '1px solid var(--border)', borderRadius: 14, padding: 16 }}>
+          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ec4899', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>🔐</span> Account Security & Password
+          </div>
+
+          {passMsg && (
+            <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#6ee7b7', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600, marginBottom: 10 }}>
+              ✅ {passMsg}
+            </div>
+          )}
+
+          {passErr && (
+            <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#fca5a5', padding: '8px 12px', borderRadius: 8, fontSize: '0.82rem', marginBottom: 10 }}>
+              ⚠️ {passErr}
+            </div>
+          )}
+
+          <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="field">
+              <label style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+                Current Password
+              </label>
+              <input
+                type="password"
+                value={currentPass}
+                onChange={(e) => setCurrentPass(e.target.value)}
+                placeholder="Enter existing password"
+                style={{ width: '100%', padding: '9px 12px', fontSize: '15px', borderRadius: 8, background: 'var(--bg, #0f172a)', border: '1px solid var(--border)', color: '#f8fafc' }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+              <div className="field">
+                <label style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={newPass}
+                  onChange={(e) => setNewPass(e.target.value)}
+                  placeholder="Min 6 characters"
+                  style={{ width: '100%', padding: '9px 12px', fontSize: '15px', borderRadius: 8, background: 'var(--bg, #0f172a)', border: '1px solid var(--border)', color: '#f8fafc' }}
+                />
+              </div>
+
+              <div className="field">
+                <label style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  value={confirmPass}
+                  onChange={(e) => setConfirmPass(e.target.value)}
+                  placeholder="Repeat new password"
+                  style={{ width: '100%', padding: '9px 12px', fontSize: '15px', borderRadius: 8, background: 'var(--bg, #0f172a)', border: '1px solid var(--border)', color: '#f8fafc' }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="btn primary"
+              disabled={passBusy}
+              style={{ marginTop: 4, padding: '10px 14px', borderRadius: 8, fontSize: '0.88rem', fontWeight: 700 }}
+            >
+              {passBusy ? 'Updating Password…' : '🔑 Change Password'}
+            </button>
+          </form>
         </div>
 
         {/* Action Buttons */}

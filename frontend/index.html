@@ -48,9 +48,11 @@
           }
         });
 
-        // Check for updates whenever user returns to the app from the background
+        // Check for updates when user returns from background (throttled to at most once per hour)
+        var lastSwCheck = Date.now();
         document.addEventListener('visibilitychange', function() {
-          if (document.visibilityState === 'visible') {
+          if (document.visibilityState === 'visible' && Date.now() - lastSwCheck > 3600000) {
+            lastSwCheck = Date.now();
             navigator.serviceWorker.getRegistration().then(function(reg) {
               if (reg) reg.update();
             });
