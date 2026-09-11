@@ -405,13 +405,56 @@ export default function ReportsTab({ user, items }: Props) {
       if (filter === 'paid' && b.status !== 'paid') return false;
       if (filter === 'unpaid' && b.status !== 'unpaid') return false;
       if (search.trim()) {
-        const q = search.toLowerCase();
+        const rawQ = search.trim();
+        const q = rawQ.toLowerCase();
+
+        // 1. Comparison operators: > 1000, < 500, >= 2000, <= 150
+        const opMatch = rawQ.match(/^([><]=?)\s*(\d+(\.\d+)?)$/);
+        if (opMatch) {
+          const op = opMatch[1];
+          const val = parseFloat(opMatch[2]);
+          const bTotal = Number(b.total || 0);
+          if (op === '>') return bTotal > val;
+          if (op === '>=') return bTotal >= val;
+          if (op === '<') return bTotal < val;
+          if (op === '<=') return bTotal <= val;
+        }
+
+        // 2. Standard text matches: customer name, phone, table label, invoice number
         const inv = formatInvoiceNumber(b.id).toLowerCase();
         const nameMatch = b.customerName?.toLowerCase().includes(q);
         const phoneMatch = b.customerPhone?.includes(q);
         const labelMatch = b.label?.toLowerCase().includes(q);
-        const invMatch = inv.includes(q);
-        return nameMatch || phoneMatch || labelMatch || invMatch;
+        const invMatch = inv.includes(q) || String(b.id).includes(q);
+
+        // 3. Amount search: matches total, subtotal, cash/upi split amounts
+        const cleanNum = q.replace(/[₹,\s]|rs\.?/gi, '');
+        let amountMatch = false;
+        if (cleanNum && !isNaN(Number(cleanNum))) {
+          const totalStr = String(b.total || '');
+          const totalFixed = Number(b.total || 0).toFixed(2);
+          const totalRound = String(Math.round(Number(b.total || 0)));
+          const subtotalStr = String(b.subtotal || '');
+          const subtotalFixed = Number(b.subtotal || 0).toFixed(2);
+          const cashStr = b.cashAmount != null ? String(b.cashAmount) : '';
+          const upiStr = b.upiAmount != null ? String(b.upiAmount) : '';
+
+          amountMatch =
+            totalStr.includes(cleanNum) ||
+            totalFixed.includes(cleanNum) ||
+            totalRound.includes(cleanNum) ||
+            subtotalStr.includes(cleanNum) ||
+            subtotalFixed.includes(cleanNum) ||
+            cashStr.includes(cleanNum) ||
+            upiStr.includes(cleanNum);
+        }
+
+        // 4. Item / dish names inside the bill
+        const itemMatch = (b.items || []).some((item) =>
+          item.name?.toLowerCase().includes(q)
+        );
+
+        return nameMatch || phoneMatch || labelMatch || invMatch || amountMatch || itemMatch;
       }
       return true;
     });
@@ -860,12 +903,35 @@ export default function ReportsTab({ user, items }: Props) {
           /* BILLS LEDGER SUBTAB */
           <div>
             <div className="history-filter-row">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search customer, phone, or INV #…"
-                style={{ fontSize: '16px' }}
-              />
+              <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search amount (₹), INV #, customer, dish…"
+                  style={{ fontSize: '16px', width: '100%', boxSizing: 'border-box', paddingRight: search ? 30 : 10 }}
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    style={{
+                      position: 'absolute',
+                      right: 8,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      padding: '2px 6px',
+                    }}
+                    title="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
               <div className="history-filter-pills">
                 <button
                   type="button"
