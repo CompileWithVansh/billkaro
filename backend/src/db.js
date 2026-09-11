@@ -140,6 +140,27 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_bills_items_gin ON billkaro_bills USING GIN (items_json);
     CREATE INDEX IF NOT EXISTS idx_bills_user_payment ON billkaro_bills(user_id, payment_method);
     CREATE INDEX IF NOT EXISTS idx_bills_user_status_total ON billkaro_bills(user_id, status, total);
+
+    -- Security hardening: Enforce Row Level Security (RLS) on all public tables
+    ALTER TABLE billkaro_users ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE billkaro_items ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE billkaro_bills ENABLE ROW LEVEL SECURITY;
+
+    -- Revoke direct Supabase PostgREST access from public API roles (anon, authenticated)
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON TABLE billkaro_users FROM anon;
+        REVOKE ALL ON TABLE billkaro_items FROM anon;
+        REVOKE ALL ON TABLE billkaro_bills FROM anon;
+      END IF;
+
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        REVOKE ALL ON TABLE billkaro_users FROM authenticated;
+        REVOKE ALL ON TABLE billkaro_items FROM authenticated;
+        REVOKE ALL ON TABLE billkaro_bills FROM authenticated;
+      END IF;
+    END $$;
   `);
   console.log('BillKaro: Postgres schema ready.');
 }

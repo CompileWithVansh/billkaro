@@ -7,3 +7,4 @@ data.json
 *.db-shm
 *.db-wal
 .DS_Store
+scratch*

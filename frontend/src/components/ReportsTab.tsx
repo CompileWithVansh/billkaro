@@ -30,6 +30,8 @@ export default function ReportsTab({ user, items }: Props) {
   const [endDate, setEndDate] = useState<string>('');
   const [search, setSearch] = useState('');
   const [updatingId, setUpdatingId] = useState<string | number | null>(null);
+  const [dishSearch, setDishSearch] = useState('');
+  const [dishesExpanded, setDishesExpanded] = useState(false);
 
   const [activeReceiptBill, setActiveReceiptBill] = useState<SavedBill | null>(null);
   const [sharingBillId, setSharingBillId] = useState<string | number | null>(null);
@@ -287,6 +289,18 @@ export default function ReportsTab({ user, items }: Props) {
     list.sort((a, b) => b.qty - a.qty || b.revenue - a.revenue);
     return list;
   }, [periodBills]);
+
+  const totalUnitsSold = useMemo(() => {
+    return topSellingItems.reduce((acc, item) => acc + item.qty, 0);
+  }, [topSellingItems]);
+
+  const displayedTopDishes = useMemo(() => {
+    if (!dishSearch.trim()) return topSellingItems;
+    const q = dishSearch.toLowerCase();
+    return topSellingItems.filter(
+      (i) => i.name.toLowerCase().includes(q) || (i.category && i.category.toLowerCase().includes(q))
+    );
+  }, [topSellingItems, dishSearch]);
 
   // Daily Sales Breakdown
   const dailyBreakdown = useMemo(() => {
@@ -586,41 +600,221 @@ export default function ReportsTab({ user, items }: Props) {
 
             {/* Top Selling Items */}
             <div style={{ background: 'var(--panel-2, #1e293b)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: '0.9rem', color: '#e2e8f0' }}>
-                🏆 Top Selling Dishes
-              </h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>🏆 Top Selling Dishes</span>
+                    {topSellingItems.length > 0 && (
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          background: 'rgba(56, 189, 248, 0.15)',
+                          color: '#38bdf8',
+                          padding: '2px 8px',
+                          borderRadius: 12,
+                          fontWeight: 700,
+                          border: '1px solid rgba(56, 189, 248, 0.3)',
+                        }}
+                      >
+                        {topSellingItems.length} dishes
+                      </span>
+                    )}
+                  </h4>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {totalUnitsSold > 0 && (
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500 }}>
+                      {totalUnitsSold} sold
+                    </span>
+                  )}
+                  {topSellingItems.length > 6 && (
+                    <button
+                      type="button"
+                      className="btn ghost sm-btn"
+                      onClick={() => setDishesExpanded((v) => !v)}
+                      style={{
+                        padding: '3px 8px',
+                        fontSize: '0.72rem',
+                        color: '#38bdf8',
+                        background: 'rgba(56, 189, 248, 0.1)',
+                        border: '1px solid rgba(56, 189, 248, 0.25)',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                      }}
+                      title={dishesExpanded ? 'Switch to compact scroll view' : 'Expand full list'}
+                    >
+                      {dishesExpanded ? '↕️ Compact' : '📜 View All'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Search when many items */}
+              {topSellingItems.length > 6 && (
+                <div style={{ marginBottom: 10, position: 'relative' }}>
+                  <input
+                    type="text"
+                    placeholder="🔍 Search dish by name or category..."
+                    value={dishSearch}
+                    onChange={(e) => setDishSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 12px 7px 32px',
+                      fontSize: '0.82rem',
+                      background: 'var(--bg, #0f172a)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      color: '#f8fafc',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', opacity: 0.6, pointerEvents: 'none' }}>
+                    🔍
+                  </span>
+                  {dishSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setDishSearch('')}
+                      style={{
+                        position: 'absolute',
+                        right: 8,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#94a3b8',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        padding: '2px 6px',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
+
               {topSellingItems.length === 0 ? (
                 <div style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No items sold in this period.</div>
+              ) : displayedTopDishes.length === 0 ? (
+                <div style={{ color: 'var(--muted)', fontSize: '0.85rem', padding: '12px 0', textAlign: 'center' }}>
+                  No dish matching "{dishSearch}".
+                </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {topSellingItems.slice(0, 6).map((item, idx) => {
-                    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
-                    const maxQty = topSellingItems[0].qty || 1;
+                <div
+                  className="dishes-scroll-list"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    maxHeight: dishesExpanded ? 'none' : '360px',
+                    overflowY: dishesExpanded ? 'visible' : 'auto',
+                    WebkitOverflowScrolling: 'touch',
+                    overscrollBehaviorY: 'contain',
+                    paddingRight: dishesExpanded ? 0 : 4,
+                  }}
+                >
+                  {displayedTopDishes.map((item, idx) => {
+                    const originalIdx = topSellingItems.findIndex((x) => x.name === item.name);
+                    const rank = (originalIdx !== -1 ? originalIdx : idx) + 1;
+                    const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+                    const maxQty = topSellingItems[0]?.qty || 1;
                     const percent = Math.min(100, Math.round((item.qty / maxQty) * 100));
 
                     return (
-                      <div key={item.name} style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: '0.95rem' }}>{medal}</span>
-                            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#f8fafc' }}>{item.name}</span>
+                      <div
+                        key={item.name}
+                        style={{
+                          background: 'var(--bg, #0f172a)',
+                          borderRadius: 8,
+                          padding: '8px 12px',
+                          border: '1px solid rgba(255, 255, 255, 0.03)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                            <span
+                              style={{
+                                fontSize: '0.95rem',
+                                minWidth: 26,
+                                flexShrink: 0,
+                                fontWeight: 700,
+                                color: rank > 3 ? '#94a3b8' : 'inherit',
+                              }}
+                            >
+                              {medal}
+                            </span>
+                            <span
+                              style={{
+                                fontWeight: 700,
+                                fontSize: '0.9rem',
+                                color: '#f8fafc',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={item.name}
+                            >
+                              {item.name}
+                            </span>
                             {item.category && (
-                              <span style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 4, color: '#94a3b8' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.7rem',
+                                  background: 'rgba(255,255,255,0.06)',
+                                  padding: '1px 6px',
+                                  borderRadius: 4,
+                                  color: '#94a3b8',
+                                  flexShrink: 0,
+                                  maxWidth: 90,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
                                 {item.category}
                               </span>
                             )}
                           </div>
-                          <div style={{ textAlign: 'right' }}>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
                             <span style={{ fontWeight: 800, color: '#38bdf8', fontSize: '0.9rem' }}>{item.qty} sold</span>
                             <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: 6 }}>(₹{item.revenue.toFixed(0)})</span>
                           </div>
                         </div>
                         <div style={{ width: '100%', height: 4, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
-                          <div style={{ width: `${percent}%`, height: '100%', background: '#38bdf8', borderRadius: 2 }} />
+                          <div
+                            style={{
+                              width: `${percent}%`,
+                              height: '100%',
+                              background: rank === 1 ? '#38bdf8' : rank <= 3 ? '#60a5fa' : '#0284c7',
+                              borderRadius: 2,
+                              transition: 'width 0.3s ease',
+                            }}
+                          />
                         </div>
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Scroll affordance / count footer */}
+              {topSellingItems.length > 6 && !dishesExpanded && !dishSearch && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    textAlign: 'center',
+                    fontSize: '0.72rem',
+                    color: '#64748b',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <span>↕️ Scroll to view all {topSellingItems.length} dishes</span>
                 </div>
               )}
             </div>

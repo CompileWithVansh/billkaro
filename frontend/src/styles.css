@@ -54,6 +54,29 @@ body {
   background: #475569;
 }
 
+/* ---------- Cross-Device Smooth Scrollable Dishes List ---------- */
+.dishes-scroll-list {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+.dishes-scroll-list::-webkit-scrollbar {
+  width: 5px;
+}
+.dishes-scroll-list::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 999px;
+}
+.dishes-scroll-list::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 999px;
+}
+.dishes-scroll-list::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
 button {
   font-family: inherit;
   cursor: pointer;

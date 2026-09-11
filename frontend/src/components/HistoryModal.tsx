@@ -977,42 +977,101 @@ export default function HistoryModal({ user, items, initialTab = 'bills', onClos
 
             {/* Top Selling Items Ranking */}
             <div style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: '0.9rem', color: '#e2e8f0' }}>
-                🏆 Top Selling Items
-              </h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>🏆 Top Selling Items</span>
+                  {topSellingItems.length > 0 && (
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        background: 'rgba(56, 189, 248, 0.15)',
+                        color: '#38bdf8',
+                        padding: '2px 8px',
+                        borderRadius: 12,
+                        fontWeight: 700,
+                        border: '1px solid rgba(56, 189, 248, 0.3)',
+                      }}
+                    >
+                      {topSellingItems.length} items
+                    </span>
+                  )}
+                </h4>
+              </div>
               {topSellingItems.length === 0 ? (
                 <div style={{ color: 'var(--muted)', fontSize: '0.85rem', padding: '10px 0' }}>No item sales recorded in this period.</div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {topSellingItems.slice(0, 8).map((item, idx) => {
+                <div
+                  className="dishes-scroll-list"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    maxHeight: '360px',
+                    overflowY: 'auto',
+                    WebkitOverflowScrolling: 'touch',
+                    overscrollBehaviorY: 'contain',
+                    paddingRight: 4,
+                  }}
+                >
+                  {topSellingItems.map((item, idx) => {
                     const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
                     const maxQty = topSellingItems[0].qty || 1;
                     const percent = Math.min(100, Math.round((item.qty / maxQty) * 100));
 
                     return (
                       <div key={item.name} style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: '0.95rem', minWidth: 24 }}>{medal}</span>
-                            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#f8fafc' }}>{item.name}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                            <span style={{ fontSize: '0.95rem', minWidth: 26, flexShrink: 0, fontWeight: 700, color: idx > 2 ? '#94a3b8' : 'inherit' }}>{medal}</span>
+                            <span
+                              style={{
+                                fontWeight: 700,
+                                fontSize: '0.9rem',
+                                color: '#f8fafc',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={item.name}
+                            >
+                              {item.name}
+                            </span>
                             {item.category && (
-                              <span style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 4, color: '#94a3b8' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.7rem',
+                                  background: 'rgba(255,255,255,0.06)',
+                                  padding: '1px 6px',
+                                  borderRadius: 4,
+                                  color: '#94a3b8',
+                                  flexShrink: 0,
+                                  maxWidth: 90,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
                                 {item.category}
                               </span>
                             )}
                           </div>
-                          <div style={{ textAlign: 'right' }}>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
                             <span style={{ fontWeight: 800, color: '#38bdf8', fontSize: '0.9rem' }}>{item.qty} sold</span>
                             <span style={{ fontSize: '0.78rem', color: '#94a3b8', marginLeft: 8 }}>(₹{item.revenue.toFixed(0)})</span>
                           </div>
                         </div>
                         {/* Visual Progress Bar */}
                         <div style={{ width: '100%', height: 4, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
-                          <div style={{ width: `${percent}%`, height: '100%', background: '#38bdf8', borderRadius: 2 }} />
+                          <div style={{ width: `${percent}%`, height: '100%', background: idx === 0 ? '#38bdf8' : idx <= 2 ? '#60a5fa' : '#0284c7', borderRadius: 2 }} />
                         </div>
                       </div>
                     );
                   })}
+                </div>
+              )}
+              {topSellingItems.length > 8 && (
+                <div style={{ marginTop: 8, textAlign: 'center', fontSize: '0.72rem', color: '#64748b' }}>
+                  ↕️ Scroll to view all {topSellingItems.length} items
                 </div>
               )}
             </div>
