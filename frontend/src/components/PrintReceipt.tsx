@@ -1,5 +1,12 @@
 import QRCode from 'qrcode';
-import { getItemDesc, getBillDisplayLabel, type Bill, type Item, type User } from '../types';
+import { getItemDesc, getBillDisplayLabel, formatInvoiceNumber, type Bill, type Item, type User } from '../types';
+import {
+  isWebBluetoothSupported,
+  ensurePrinterConnected,
+  printDirectBluetoothReceipt,
+  connectPrinter,
+  getConnectedDeviceName,
+} from '../utils/bluetoothPrinter';
 
 interface Props {
   bill: Bill;
@@ -371,4 +378,75 @@ function escHtml(str: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+export type PrintReceiptOptions = Props;
+
+export async function printReceipt(
+  options: Props,
+  onToast?: (msg: string, type?: 'success' | 'warning' | 'info' | 'error') => void
+): Promise<boolean> {
+  const invNumber =
+    options.invoiceNumber ||
+    (options.bill?.id && !isNaN(Number(options.bill.id))
+      ? formatInvoiceNumber(options.bill.id)
+      : 'INV-0001');
+
+  const fullOptions: Props = {
+    ...options,
+    invoiceNumber: invNumber,
+    customerName: options.customerName || (options.bill as any)?.customerName,
+    customerPhone: options.customerPhone || (options.bill as any)?.customerPhone,
+  };
+
+  const btPrinterEnabled =
+    typeof window !== 'undefined' &&
+    localStorage.getItem('billkaro_bt_printer_enabled') === 'true';
+
+  if (btPrinterEnabled && isWebBluetoothSupported()) {
+    const isConn = await ensurePrinterConnected();
+    if (isConn) {
+      try {
+        const btRes = await printDirectBluetoothReceipt(fullOptions);
+        if (btRes.success) {
+          const devName = getConnectedDeviceName() || 'Thermal Printer';
+          onToast?.(`✅ Bill ${invNumber} printed on ${devName}!`, 'success');
+          return true;
+        } else {
+          console.warn('Bluetooth print failed:', btRes.error);
+          onToast?.(`⚠️ Bluetooth printer: ${btRes.error || 'Check printer'}. Opening print dialog...`, 'warning');
+          await printBill(fullOptions);
+          return true;
+        }
+      } catch (err: any) {
+        console.warn('Bluetooth print error:', err);
+        onToast?.('⚠️ Bluetooth error. Opening browser print...', 'warning');
+        await printBill(fullOptions);
+        return true;
+      }
+    } else {
+      const pairedName =
+        (typeof localStorage !== 'undefined' &&
+          localStorage.getItem('billkaro_bt_printer_name')) ||
+        'Thermal Printer';
+      const shouldReconnect = window.confirm(
+        `🖨️ ${pairedName} is not connected. Tap OK to reconnect your printer and print now, or Cancel for browser print.`
+      );
+      if (shouldReconnect) {
+        const connRes = await connectPrinter();
+        if (connRes.success) {
+          const btRes = await printDirectBluetoothReceipt(fullOptions);
+          if (btRes.success) {
+            onToast?.(`✅ Bill ${invNumber} printed on ${connRes.deviceName || pairedName}!`, 'success');
+            return true;
+          }
+        }
+      }
+      await printBill(fullOptions);
+      return true;
+    }
+  }
+
+  await printBill(fullOptions);
+  return true;
 }

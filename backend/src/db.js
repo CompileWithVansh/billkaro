@@ -390,12 +390,23 @@ export const billsRepo = {
     );
     return rows;
   },
-  async updateStatus(id, userId, status) {
-    const { rows } = await getPool().query(
-      `UPDATE billkaro_bills SET status = $1 WHERE id = $2 AND user_id = $3 RETURNING *`,
-      [status, Number(id), Number(userId)]
-    );
+  async updateStatus(id, userId, status, paymentMethod) {
+    let query = `UPDATE billkaro_bills SET status = $1`;
+    const params = [status];
+    if (paymentMethod) {
+      params.push(paymentMethod);
+      query += `, payment_method = $${params.length}`;
+    }
+    params.push(Number(id), Number(userId));
+    query += ` WHERE id = $${params.length - 1} AND user_id = $${params.length} RETURNING *`;
+    const { rows } = await getPool().query(query, params);
     return rows[0] || null;
+  },
+  async getNextBillId(userId) {
+    const { rows } = await getPool().query(
+      'SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM billkaro_bills'
+    );
+    return Number(rows[0]?.next_id || 1);
   },
   async remove(id, userId) {
     const res = await getPool().query(

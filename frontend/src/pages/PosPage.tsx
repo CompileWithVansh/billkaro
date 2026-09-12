@@ -58,15 +58,8 @@ import StockTab from '../components/StockTab';
 import ReportsTab from '../components/ReportsTab';
 import SettingsTab from '../components/SettingsTab';
 import { nextItemColor } from '../colors';
-import { printBill } from '../components/PrintReceipt';
-import {
-  isPrinterConnected,
-  ensurePrinterConnected,
-  connectPrinter,
-  getConnectedDeviceName,
-  isWebBluetoothSupported,
-  printDirectBluetoothReceipt,
-} from '../utils/bluetoothPrinter';
+import { printReceipt } from '../components/PrintReceipt';
+import { isPrinterConnected } from '../utils/bluetoothPrinter';
 import { saveCachedItems, getCachedItems, queueOfflineBill, syncPendingBills } from '../offlineStore';
 
 const LEGACY_TABS_KEY = 'billkaro_tabs';
@@ -252,9 +245,9 @@ export default function PosPage() {
   }>({ paymentMethod: 'upi' });
 
   // Non-blocking toast notification for high-speed POS billing during rush hours
-  const [posToast, setPosToast] = useState<{ message: string; type?: 'success' | 'warning' | 'info' } | null>(null);
+  const [posToast, setPosToast] = useState<{ message: string; type?: 'success' | 'warning' | 'info' | 'error' } | null>(null);
 
-  function showPosToast(message: string, type: 'success' | 'warning' | 'info' = 'success', durationMs = 2600) {
+  function showPosToast(message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success', durationMs = 2600) {
     setPosToast({ message, type });
     setTimeout(() => {
       setPosToast((curr) => (curr?.message === message ? null : curr));
@@ -262,6 +255,17 @@ export default function PosPage() {
   }
 
   const [searchOpen, setSearchOpen] = useState(false);
+  const [nextInvoiceNumber, setNextInvoiceNumber] = useState<string>('INV-0001');
+
+  useEffect(() => {
+    if (showPayment) {
+      api.get('/bills/next-number')
+        .then((res) => {
+          if (res.data?.invoiceNumber) setNextInvoiceNumber(res.data.invoiceNumber);
+        })
+        .catch(() => {});
+    }
+  }, [showPayment]);
   const [itemSearch, setItemSearch] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -753,79 +757,14 @@ export default function PosPage() {
         finalTax: billTax,
       });
 
-      // Generate a unique clientBillId token to guarantee idempotency on the server
-      const clientBillId = activeBill.savedBillId || `bill_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      // Determine invoice number to display on receipts / pre-bills
+      const invNumber = nextInvoiceNumber || (activeBill.savedBillId ? formatInvoiceNumber(activeBill.savedBillId) : 'INV-0001');
 
-      const payload = {
-        label: activeBill.label,
-        items: activeBill.lines,
-        subtotal,
-        tax: billTax,
-        total: billTotal,
-        paymentMethod: details.paymentMethod,
-        customerName: details.customerName,
-        customerPhone: details.customerPhone,
-        status: details.status,
-        clientBillId,
-        discountType: details.discountType || null,
-        discountValue: details.discountValue || 0,
-        discountAmount: details.discountAmount || 0,
-        cashAmount: details.cashAmount !== undefined ? details.cashAmount : null,
-        upiAmount: details.upiAmount !== undefined ? details.upiAmount : null,
-      };
-
-      let savedBillId = activeBill.savedBillId;
-
-      if (navigator.onLine) {
-        try {
-          if (savedBillId && details.action === 'save') {
-            await api.put(`/bills/${savedBillId}/status`, {
-              status: 'paid',
-              paymentMethod: details.paymentMethod,
-            });
-          } else {
-            const res = await api.post('/bills', {
-              ...payload,
-              status: details.status,
-            });
-            savedBillId = res.data?.id || res.data?.bill?.id;
-            fetchItems();
-          }
-        } catch (err) {
-          console.warn('Network error saving bill, queuing offline:', err);
-          const queued = await queueOfflineBill(payload);
-          savedBillId = queued.tempId;
-        }
-      } else {
-        const queued = await queueOfflineBill(payload);
-        savedBillId = queued.tempId;
-      }
-
-      const invNumber = savedBillId ? formatInvoiceNumber(savedBillId) : (activeBill.savedBillId ? formatInvoiceNumber(activeBill.savedBillId) : 'INV-0001');
-
-      updateActiveBill((b) => ({
-        ...b,
-        savedBillId,
-        billShared: details.action === 'whatsapp' ? true : b.billShared,
-      }));
-
-      setCurrentReceiptDetails({
-        paymentMethod: details.paymentMethod,
-        customerName: details.customerName,
-        customerPhone: details.customerPhone,
-        invoiceNumber: invNumber,
-        discountType: details.discountType || null,
-        discountValue: details.discountValue || 0,
-        discountAmount: details.discountAmount || 0,
-        cashAmount: details.cashAmount !== undefined ? details.cashAmount : null,
-        upiAmount: details.upiAmount !== undefined ? details.upiAmount : null,
-        finalTotal: billTotal,
-        finalTax: billTax,
-      });
-
+      // ACTION 1: PRINT RECEIPT (Pre-bill / Dining Check)
+      // Strictly prints to thermal/browser printer WITHOUT creating a database bill or Udhaar record
       if (details.action === 'print' && user) {
         const printParams = {
-          bill: { ...activeBill, savedBillId, label: `Bill No: ${invNumber}` },
+          bill: { ...activeBill, label: `Bill No: ${invNumber}` },
           invoiceNumber: invNumber,
           customerName: details.customerName,
           customerPhone: details.customerPhone,
@@ -842,62 +781,14 @@ export default function PosPage() {
           upiAmount: details.upiAmount,
         };
 
-        // Check if user has explicitly enabled Bluetooth Thermal Printer in settings
-        const btPrinterEnabled = (typeof window !== 'undefined' && localStorage.getItem('billkaro_bt_printer_enabled')) === 'true';
+        await printReceipt(printParams, showPosToast);
+        // Keep Complete Payment modal open right at the Paid button
+        return;
+      }
 
-        if (btPrinterEnabled && isWebBluetoothSupported()) {
-          const isConn = await ensurePrinterConnected();
-          if (isConn) {
-            try {
-              const btRes = await printDirectBluetoothReceipt(printParams);
-              if (btRes.success) {
-                showPosToast(`✅ Bill ${invNumber} printed on ${getConnectedDeviceName() || 'PSF588'}!`, 'success');
-                // Keep Complete Payment modal open right at the Paid button
-                return;
-              } else {
-                console.warn('Bluetooth print failed:', btRes.error);
-                showPosToast(`⚠️ Bluetooth printer: ${btRes.error || 'Check printer'}. Opening print dialog...`, 'warning');
-                await printBill(printParams);
-                // Keep Complete Payment modal open right at the Paid button
-                return;
-              }
-            } catch (err: any) {
-              console.warn('Bluetooth print error:', err);
-              showPosToast('⚠️ Bluetooth error. Opening browser print...', 'warning');
-              await printBill(printParams);
-              // Keep Complete Payment modal open right at the Paid button
-              return;
-            }
-          } else {
-            // Bluetooth is enabled in settings, but printer is disconnected (e.g. after refresh/sleep)
-            // Prompt to reconnect so the user can print to their physical thermal printer!
-            const pairedName = (typeof localStorage !== 'undefined' && localStorage.getItem('billkaro_bt_printer_name')) || 'PSF588';
-            const shouldReconnect = window.confirm(
-              `🖨️ ${pairedName} is not connected. Tap OK to reconnect your printer and print now, or Cancel for browser print.`
-            );
-            if (shouldReconnect) {
-              const connRes = await connectPrinter();
-              if (connRes.success) {
-                const btRes = await printDirectBluetoothReceipt(printParams);
-                if (btRes.success) {
-                  showPosToast(`✅ Bill ${invNumber} printed on ${connRes.deviceName || 'PSF588'}!`, 'success');
-                  // Keep Complete Payment modal open right at the Paid button
-                  return;
-                }
-              }
-            } else {
-              await printBill(printParams);
-              // Keep Complete Payment modal open right at the Paid button
-              return;
-            }
-          }
-        } else {
-          // Bluetooth printer is turned OFF (or not supported)
-          // Directly open browser print with ZERO popups and ZERO Bluetooth searches!
-          await printBill(printParams);
-          // Keep Complete Payment modal open right at the Paid button
-        }
-      } else if (details.action === 'whatsapp') {
+      // ACTION 2: WHATSAPP SHARE
+      // Shares receipt image/text without closing or saving the bill yet
+      if (details.action === 'whatsapp') {
         const itemsList = activeBill.lines
           .map((l) => {
             const catalogItem = items.find((i) => i.id === l.itemId);
@@ -948,7 +839,7 @@ export default function PosPage() {
               if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
                 await navigator.share({
                   title: `BillKaro Receipt - ${invNumber}`,
-                  text: `Receipt from ${user?.storeName || 'BillKaro'} (Total: ₹${total.toFixed(2)})`,
+                  text: `Receipt from ${user?.storeName || 'BillKaro'} (Total: ₹${billTotal.toFixed(2)})`,
                   files: [file],
                 });
               } else {
@@ -971,19 +862,55 @@ export default function PosPage() {
           console.warn('Failed to generate image receipt:', err);
           sendWhatsAppText();
         }
-      }
 
-      if (details.action === 'save') {
-        clearActiveBill();
-        setShowPayment(false);
-      } else if (details.action === 'whatsapp') {
         setShowPayment(false);
         alert(`📲 Receipt shared for Bill No: ${invNumber}! Table "${activeBill.label}" remains open on screen until payment is received.`);
-      } else if (details.action === 'print') {
-        // Keep Complete Payment modal open right at the Paid button until user clicks Paid or ✕
-      } else {
-        setShowPayment(false);
+        return;
       }
+
+      // ACTION 3: FINAL CHECKOUT & SAVE (Paid or Udhaar)
+      // Exactly ONE bill is saved to the database upon clicking Paid or Save as Udhaar
+      const clientBillId = `bill_${activeBill.id}_${Date.now()}`;
+
+      const payload = {
+        label: activeBill.label,
+        items: activeBill.lines,
+        subtotal,
+        tax: billTax,
+        total: billTotal,
+        paymentMethod: details.paymentMethod,
+        customerName: details.customerName,
+        customerPhone: details.customerPhone,
+        status: details.status,
+        clientBillId,
+        discountType: details.discountType || null,
+        discountValue: details.discountValue || 0,
+        discountAmount: details.discountAmount || 0,
+        cashAmount: details.cashAmount !== undefined ? details.cashAmount : null,
+        upiAmount: details.upiAmount !== undefined ? details.upiAmount : null,
+      };
+
+      let savedBillId: string | number | null = null;
+
+      if (navigator.onLine) {
+        try {
+          const res = await api.post('/bills', payload);
+          savedBillId = res.data?.id || res.data?.bill?.id;
+          fetchItems();
+        } catch (err) {
+          console.warn('Network error saving bill, queuing offline:', err);
+          const queued = await queueOfflineBill(payload);
+          savedBillId = queued.tempId;
+        }
+      } else {
+        const queued = await queueOfflineBill(payload);
+        savedBillId = queued.tempId;
+      }
+
+      const finalInvNumber = savedBillId ? formatInvoiceNumber(savedBillId) : invNumber;
+      showPosToast(`✅ Bill ${finalInvNumber} saved successfully!`, 'success');
+      clearActiveBill();
+      setShowPayment(false);
     } finally {
       isSubmittingBillRef.current = false;
     }

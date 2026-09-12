@@ -1,18 +1,13 @@
 node_modules/
 dist/
-*.tsbuildinfo
 .env
-data.json
-*.db
-*.db-shm
-*.db-wal
-.DS_Store
-scratch*
+*.tsbuildinfo
+backend/scratch_migrate.js
 
-# Project Architecture & Blueprint Specifications (Do Not Push)
+# Project technical specifications & architecture audit documents (local workspace)
 01_EXPERIENCE_UX_DOCUMENT.md
 02_PRD_PRODUCT_REQUIREMENTS_DOCUMENT.md
 03_TRD_TECHNICAL_REQUIREMENTS_AND_DESIGN.md
 04_UI_DESIGN_SPECIFICATION.md
 05_DEVELOPMENT_AND_EXECUTION_PLAN.md
-06_INTERVIEW_PREP_AND_RESUME_GUIDE.md
+06_SYSTEM_AUDIT_AND_BENCHMARK_ANALYSIS.md

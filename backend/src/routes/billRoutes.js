@@ -408,6 +408,17 @@ router.get(
   })
 );
 
+// GET /api/bills/next-number (Get the next prospective invoice sequence number - Cashier/Owner only)
+router.get(
+  '/next-number',
+  requireUserRole,
+  wrap(async (req, res) => {
+    const nextId = await billsRepo.getNextBillId(req.userId);
+    const invoiceNumber = 'INV-' + String(nextId).padStart(4, '0');
+    res.json({ nextId, invoiceNumber });
+  })
+);
+
 // PUT /api/bills/:id/status (Mark Udhaar bill as paid, etc. - Cashier/Owner only)
 router.put(
   '/:id/status',
@@ -417,12 +428,14 @@ router.put(
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: 'Invalid bill ID' });
     }
-    const { status } = req.body || {};
+    const { status, paymentMethod } = req.body || {};
     const validStatuses = ['paid', 'unpaid', 'cancelled'];
     if (!status || !validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status. Must be paid, unpaid, or cancelled.' });
     }
-    const bill = await billsRepo.updateStatus(id, req.userId, status);
+    const validPaymentMethods = ['upi', 'cash', 'card', 'udhaar', 'split', 'other'];
+    const cleanPaymentMethod = validPaymentMethods.includes(paymentMethod) ? paymentMethod : undefined;
+    const bill = await billsRepo.updateStatus(id, req.userId, status, cleanPaymentMethod);
     if (!bill) return res.status(404).json({ error: 'Bill not found' });
     res.json({ ok: true, bill });
   })

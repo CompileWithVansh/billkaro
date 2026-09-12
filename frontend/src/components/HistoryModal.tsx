@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toBlob } from 'html-to-image';
 import { api } from '../api';
 import { getItemDesc, formatInvoiceNumber, getBillDisplayLabel, type Item, type SavedBill, type User } from '../types';
-import { printBill } from './PrintReceipt';
+import { printReceipt } from './PrintReceipt';
 import { ReceiptCard } from './ReceiptCard';
 
 interface Props {
@@ -794,9 +794,13 @@ export default function HistoryModal({ user, items, initialTab = 'bills', onClos
                             </button>
                             <button
                               className="btn ghost sm-btn"
-                              onClick={() =>
-                                printBill({
+                              onClick={() => {
+                                const invNum = formatInvoiceNumber(b.id);
+                                printReceipt({
                                   bill: { id: String(b.id), label: displayTitle, lines: b.items || [] },
+                                  invoiceNumber: invNum,
+                                  customerName: b.customerName || undefined,
+                                  customerPhone: b.customerPhone || undefined,
                                   user,
                                   items,
                                   subtotal: b.subtotal,
@@ -808,8 +812,8 @@ export default function HistoryModal({ user, items, initialTab = 'bills', onClos
                                   paymentMethod: b.paymentMethod,
                                   cashAmount: b.cashAmount,
                                   upiAmount: b.upiAmount,
-                                })
-                              }
+                                });
+                              }}
                               title="Print Receipt"
                             >
                               Print
@@ -931,9 +935,13 @@ export default function HistoryModal({ user, items, initialTab = 'bills', onClos
                                 </button>
                                 <button
                                   className="btn ghost sm-btn"
-                                  onClick={() =>
-                                    printBill({
+                                  onClick={() => {
+                                    const invNum = formatInvoiceNumber(b.id);
+                                    printReceipt({
                                       bill: { id: String(b.id), label: displayTitle, lines: b.items || [] },
+                                      invoiceNumber: invNum,
+                                      customerName: b.customerName || undefined,
+                                      customerPhone: b.customerPhone || undefined,
                                       user,
                                       items,
                                       subtotal: b.subtotal,
@@ -945,8 +953,8 @@ export default function HistoryModal({ user, items, initialTab = 'bills', onClos
                                       paymentMethod: b.paymentMethod,
                                       cashAmount: b.cashAmount,
                                       upiAmount: b.upiAmount,
-                                    })
-                                  }
+                                    });
+                                  }}
                                 >
                                   Print
                                 </button>
