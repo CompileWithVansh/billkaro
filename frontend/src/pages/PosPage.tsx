@@ -50,6 +50,7 @@ import KeypadModal from '../components/KeypadModal';
 import HistoryModal from '../components/HistoryModal';
 import InventoryModal from '../components/InventoryModal';
 import ConnectKdsModal from '../components/ConnectKdsModal';
+import ConnectPrinterModal from '../components/ConnectPrinterModal';
 import { MenuScannerModal } from '../components/MenuScannerModal';
 import ArrangeCategoriesModal from '../components/ArrangeCategoriesModal';
 import KitchenTab from '../components/KitchenTab';
@@ -58,6 +59,7 @@ import ReportsTab from '../components/ReportsTab';
 import SettingsTab from '../components/SettingsTab';
 import { nextItemColor } from '../colors';
 import { printBill } from '../components/PrintReceipt';
+import { isPrinterConnected, printDirectBluetoothReceipt } from '../utils/bluetoothPrinter';
 import { saveCachedItems, getCachedItems, queueOfflineBill, syncPendingBills } from '../offlineStore';
 
 const LEGACY_TABS_KEY = 'billkaro_tabs';
@@ -220,6 +222,7 @@ export default function PosPage() {
   const [historyInitialTab, setHistoryInitialTab] = useState<'bills' | 'reports'>('bills');
   const [showInventory, setShowInventory] = useState(false);
   const [showConnectKds, setShowConnectKds] = useState(false);
+  const [showConnectPrinter, setShowConnectPrinter] = useState(false);
   const [showMenuScanner, setShowMenuScanner] = useState(false);
   const [editorItem, setEditorItem] = useState<Item | null>(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -353,6 +356,7 @@ export default function PosPage() {
     showHistory ||
     showInventory ||
     showConnectKds ||
+    showConnectPrinter ||
     showMenuScanner ||
     showArrangeCategories ||
     showSettings ||
@@ -803,7 +807,7 @@ export default function PosPage() {
       });
 
       if (details.action === 'print' && user) {
-        await printBill({
+        const printParams = {
           bill: { ...activeBill, label: `Bill No: ${invNumber}` },
           user,
           items,
@@ -816,7 +820,22 @@ export default function PosPage() {
           paymentMethod: details.paymentMethod,
           cashAmount: details.cashAmount,
           upiAmount: details.upiAmount,
-        });
+        };
+
+        if (isPrinterConnected()) {
+          try {
+            const btRes = await printDirectBluetoothReceipt(printParams);
+            if (!btRes.success) {
+              console.warn('Bluetooth print failed, falling back to browser print:', btRes.error);
+              await printBill(printParams);
+            }
+          } catch (err) {
+            console.warn('Bluetooth print error, falling back:', err);
+            await printBill(printParams);
+          }
+        } else {
+          await printBill(printParams);
+        }
       } else if (details.action === 'whatsapp') {
         const itemsList = activeBill.lines
           .map((l) => {
@@ -1126,6 +1145,12 @@ export default function PosPage() {
                     onClick={() => setShowConnectKds(true)}
                   >
                     📲 Connect Kitchen (QR)
+                  </button>
+                  <button
+                    className="menu-dropdown-item"
+                    onClick={() => setShowConnectPrinter(true)}
+                  >
+                    🖨️ Connect Bluetooth Printer {isPrinterConnected() ? '🟢' : ''}
                   </button>
                   <button
                     className="menu-dropdown-item"
@@ -1673,6 +1698,7 @@ export default function PosPage() {
       )}
       {showInventory && <InventoryModal items={items} onClose={() => setShowInventory(false)} onRefreshItems={fetchItems} />}
       {showConnectKds && <ConnectKdsModal onClose={() => setShowConnectKds(false)} />}
+      {showConnectPrinter && <ConnectPrinterModal onClose={() => setShowConnectPrinter(false)} />}
       {showMenuScanner && (
         <MenuScannerModal
           onClose={() => setShowMenuScanner(false)}
