@@ -423,6 +423,7 @@ export async function printTestReceipt(): Promise<{ success: boolean; error?: st
 interface PrintReceiptParams {
   bill: Bill;
   user: User;
+  invoiceNumber?: string;
   items?: Item[];
   subtotal: number;
   tax: number;
@@ -442,17 +443,40 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
     return { success: false, error: 'Printer not connected. Please ensure PSF588 is turned on and paired.' };
   }
 
-  const { bill, user, items, subtotal, tax, total, discountAmount, discountValue, discountType, paymentMethod, upiAmount } = params;
+  const { bill, user, items, subtotal, tax, total, discountAmount, discountValue, discountType, paymentMethod, upiAmount, invoiceNumber } = params;
 
   try {
     const builder = new EscPosBuilder();
 
-    // Store Name & Info Header (Bold, Centered)
+    // 1. Feed 1 line at the top so the tear bar does NOT cut off the top of the restaurant name!
+    builder.feed(1);
+
+    // 2. Store Name & Info Header (Bold, Centered)
+    const storeName = (user.storeName || 'RESTAURANT').trim().toUpperCase();
     builder
       .alignCenter()
       .doubleHeight(true)
-      .bold(true)
-      .line(user.storeName.toUpperCase())
+      .bold(true);
+
+    if (storeName.length <= 26) {
+      builder.line(storeName);
+    } else {
+      // Split into 2 centered lines by words so long names never get clipped on the edges
+      const words = storeName.split(' ');
+      let line1 = '';
+      let line2 = '';
+      for (const w of words) {
+        if ((line1 + ' ' + w).trim().length <= 26) {
+          line1 = (line1 + ' ' + w).trim();
+        } else {
+          line2 = (line2 + ' ' + w).trim();
+        }
+      }
+      builder.line(line1);
+      if (line2) builder.line(line2);
+    }
+
+    builder
       .doubleHeight(false)
       .bold(false);
 
@@ -465,10 +489,10 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
     const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-    // Clean, short invoice number that fits on 1 single line without breaking
-    const invNumber = bill.savedBillId
+    // Actual bill / invoice number (e.g. INV-0250) - never fallback to client tab ID
+    const invNumber = invoiceNumber || (bill.savedBillId
       ? formatInvoiceNumber(bill.savedBillId)
-      : (bill.id ? `INV-${String(bill.id).slice(-4)}` : 'INV-0001');
+      : (bill.id && !isNaN(Number(bill.id)) ? formatInvoiceNumber(bill.id) : 'INV-0001'));
 
     builder
       .twoCol(dateStr, timeStr)

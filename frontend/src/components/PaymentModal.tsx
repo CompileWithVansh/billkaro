@@ -158,7 +158,7 @@ export default function PaymentModal({
         paymentMethod: method,
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
-        status: method === 'udhaar' || action === 'whatsapp' ? 'unpaid' : 'paid',
+        status: method === 'udhaar' || action === 'whatsapp' || action === 'print' ? 'unpaid' : 'paid',
         action,
         discountType: discountAmount > 0 ? discountType : null,
         discountValue: discountAmount > 0 ? effectiveDiscountValue : 0,

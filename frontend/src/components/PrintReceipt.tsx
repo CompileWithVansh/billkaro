@@ -4,6 +4,7 @@ import { getItemDesc, getBillDisplayLabel, type Bill, type Item, type User } fro
 interface Props {
   bill: Bill;
   user: User;
+  invoiceNumber?: string;
   items?: Item[];
   subtotal: number;
   tax: number;
@@ -19,6 +20,7 @@ interface Props {
 export async function printBill({
   bill,
   user,
+  invoiceNumber,
   items,
   subtotal,
   tax,
@@ -122,7 +124,7 @@ export async function printBill({
   }
 
   const totalQty = bill.lines.reduce((s, l) => s + l.qty, 0);
-  const billLabelDisplay = getBillDisplayLabel(bill);
+  const billLabelDisplay = invoiceNumber || getBillDisplayLabel(bill);
 
   const html = `<!DOCTYPE html>
 <html lang="en">
