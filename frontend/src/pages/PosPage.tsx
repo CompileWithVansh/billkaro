@@ -62,6 +62,7 @@ import { printBill } from '../components/PrintReceipt';
 import {
   isPrinterConnected,
   ensurePrinterConnected,
+  connectPrinter,
   getConnectedDeviceName,
   isWebBluetoothSupported,
   printDirectBluetoothReceipt,
@@ -865,12 +866,27 @@ export default function PosPage() {
               return;
             }
           } else {
-            // Bluetooth enabled in settings, but printer is disconnected/sleeping
-            // Fallback directly to browser print without any blocking confirm dialog!
-            showPosToast('🖨️ Printer disconnected. Opening standard print...', 'info');
-            await printBill(printParams);
-            setShowPayment(false);
-            return;
+            // Bluetooth is enabled in settings, but printer is disconnected (e.g. after refresh/sleep)
+            // Prompt to reconnect so the user can print to their physical thermal printer!
+            const pairedName = (typeof localStorage !== 'undefined' && localStorage.getItem('billkaro_bt_printer_name')) || 'PSF588';
+            const shouldReconnect = window.confirm(
+              `🖨️ ${pairedName} is not connected. Tap OK to reconnect your printer and print now, or Cancel for browser print.`
+            );
+            if (shouldReconnect) {
+              const connRes = await connectPrinter();
+              if (connRes.success) {
+                const btRes = await printDirectBluetoothReceipt(printParams);
+                if (btRes.success) {
+                  showPosToast(`✅ Bill ${invNumber} printed on ${connRes.deviceName || 'PSF588'}!`, 'success');
+                  setShowPayment(false);
+                  return;
+                }
+              }
+            } else {
+              await printBill(printParams);
+              setShowPayment(false);
+              return;
+            }
           }
         } else {
           // Bluetooth printer is turned OFF (or not supported)
