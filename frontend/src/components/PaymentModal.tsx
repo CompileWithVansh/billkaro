@@ -69,6 +69,7 @@ export default function PaymentModal({
   const [dataUrl, setDataUrl] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPrinted, setIsPrinted] = useState(false);
 
   // Authoritative calculation
   const numDiscountInput = Number(discountInput) || 0;
@@ -168,9 +169,15 @@ export default function PaymentModal({
         finalTotal: finalPayable,
         finalTax: calculatedTax,
       });
+      if (action === 'print') {
+        setIsPrinted(true);
+      }
     } catch (err) {
       console.error('Payment processing failed:', err);
-      setIsSubmitting(false);
+    } finally {
+      if (action === 'print' || action === 'whatsapp') {
+        setIsSubmitting(false);
+      }
     }
   }
 
@@ -605,6 +612,29 @@ export default function PaymentModal({
             flexShrink: 0,
           }}
         >
+          {/* Printed status notice */}
+          {isPrinted && (
+            <div
+              style={{
+                fontSize: '0.78rem',
+                color: '#4ade80',
+                fontWeight: 600,
+                textAlign: 'center',
+                background: 'rgba(74, 222, 128, 0.1)',
+                padding: '6px 10px',
+                borderRadius: 8,
+                border: '1px solid rgba(74, 222, 128, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              <span>🖨️ Receipt Printed!</span>
+              <span style={{ color: '#94a3b8', fontWeight: 400 }}>Tap below when payment is collected:</span>
+            </div>
+          )}
+
           {/* Main Primary Action Button */}
           <button
             type="button"
@@ -667,11 +697,13 @@ export default function PaymentModal({
                 opacity: isSubmitting ? 0.5 : 1,
                 cursor: isSubmitting ? 'not-allowed' : 'pointer',
                 borderRadius: 10,
+                color: isPrinted ? '#38bdf8' : undefined,
+                borderColor: isPrinted ? 'rgba(56, 189, 248, 0.4)' : undefined,
               }}
               disabled={isSubmitting}
               onClick={() => handleComplete('print')}
             >
-              🖨️ Print
+              {isPrinted ? '🖨️ Re-Print' : '🖨️ Print'}
             </button>
           </div>
 

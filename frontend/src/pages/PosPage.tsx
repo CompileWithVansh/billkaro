@@ -852,20 +852,20 @@ export default function PosPage() {
               const btRes = await printDirectBluetoothReceipt(printParams);
               if (btRes.success) {
                 showPosToast(`✅ Bill ${invNumber} printed on ${getConnectedDeviceName() || 'PSF588'}!`, 'success');
-                setShowPayment(false);
+                // Keep Complete Payment modal open right at the Paid button
                 return;
               } else {
                 console.warn('Bluetooth print failed:', btRes.error);
                 showPosToast(`⚠️ Bluetooth printer: ${btRes.error || 'Check printer'}. Opening print dialog...`, 'warning');
                 await printBill(printParams);
-                setShowPayment(false);
+                // Keep Complete Payment modal open right at the Paid button
                 return;
               }
             } catch (err: any) {
               console.warn('Bluetooth print error:', err);
               showPosToast('⚠️ Bluetooth error. Opening browser print...', 'warning');
               await printBill(printParams);
-              setShowPayment(false);
+              // Keep Complete Payment modal open right at the Paid button
               return;
             }
           } else {
@@ -881,13 +881,13 @@ export default function PosPage() {
                 const btRes = await printDirectBluetoothReceipt(printParams);
                 if (btRes.success) {
                   showPosToast(`✅ Bill ${invNumber} printed on ${connRes.deviceName || 'PSF588'}!`, 'success');
-                  setShowPayment(false);
+                  // Keep Complete Payment modal open right at the Paid button
                   return;
                 }
               }
             } else {
               await printBill(printParams);
-              setShowPayment(false);
+              // Keep Complete Payment modal open right at the Paid button
               return;
             }
           }
@@ -895,7 +895,7 @@ export default function PosPage() {
           // Bluetooth printer is turned OFF (or not supported)
           // Directly open browser print with ZERO popups and ZERO Bluetooth searches!
           await printBill(printParams);
-          setShowPayment(false);
+          // Keep Complete Payment modal open right at the Paid button
         }
       } else if (details.action === 'whatsapp') {
         const itemsList = activeBill.lines
@@ -979,6 +979,8 @@ export default function PosPage() {
       } else if (details.action === 'whatsapp') {
         setShowPayment(false);
         alert(`📲 Receipt shared for Bill No: ${invNumber}! Table "${activeBill.label}" remains open on screen until payment is received.`);
+      } else if (details.action === 'print') {
+        // Keep Complete Payment modal open right at the Paid button until user clicks Paid or ✕
       } else {
         setShowPayment(false);
       }
@@ -1892,12 +1894,12 @@ export default function PosPage() {
         </button>
       </nav>
 
-      {/* Non-blocking POS Toast (Replaces blocking alerts for fast rush hours) */}
+      {/* Non-blocking POS Toast at Top of Screen */}
       {posToast && (
         <div
           style={{
             position: 'fixed',
-            bottom: 74,
+            top: 'calc(env(safe-area-inset-top, 0px) + 16px)',
             left: '50%',
             transform: 'translateX(-50%)',
             background:
@@ -1907,17 +1909,19 @@ export default function PosPage() {
                 ? '#1e293b'
                 : '#059669',
             color: '#ffffff',
-            padding: '10px 20px',
+            padding: '10px 22px',
             borderRadius: 14,
             fontWeight: 700,
             fontSize: '0.88rem',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-            zIndex: 10000,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+            zIndex: 20000,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            border: '1px solid rgba(255,255,255,0.2)',
+            border: '1px solid rgba(255,255,255,0.25)',
             pointerEvents: 'none',
+            maxWidth: '92vw',
+            textAlign: 'center',
           }}
         >
           {posToast.message}
