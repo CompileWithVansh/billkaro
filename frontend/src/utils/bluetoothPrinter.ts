@@ -29,7 +29,64 @@ export function getConnectedDeviceName(): string | null {
   if (isPrinterConnected() && activeDevice) {
     return activeDevice.name || 'Bluetooth POS Printer';
   }
-  return null;
+  return typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_bt_printer_name') : null;
+}
+
+export async function ensurePrinterConnected(): Promise<boolean> {
+  if (isPrinterConnected()) {
+    return true;
+  }
+
+  // If activeDevice is in memory but GATT disconnected, reconnect to it
+  if (activeDevice && activeDevice.gatt) {
+    try {
+      console.info('[Bluetooth] Reconnecting to activeDevice...');
+      const server = await activeDevice.gatt.connect();
+      for (const serviceUuid of KNOWN_PRINTER_SERVICES) {
+        try {
+          const service = await server.getPrimaryService(serviceUuid);
+          const chars = await service.getCharacteristics();
+          for (const c of chars) {
+            if (c.properties.write || c.properties.writeWithoutResponse) {
+              activeCharacteristic = c;
+              return true;
+            }
+          }
+        } catch {}
+      }
+    } catch (e) {
+      console.warn('[Bluetooth] activeDevice reconnect failed:', e);
+    }
+  }
+
+  // If browser remembers paired devices via getDevices()
+  if (typeof navigator !== 'undefined' && 'bluetooth' in navigator && (navigator as any).bluetooth.getDevices) {
+    try {
+      const devices = await (navigator as any).bluetooth.getDevices();
+      if (devices && devices.length > 0) {
+        const device = devices[0];
+        console.info('[Bluetooth] Reconnecting to previously paired device:', device.name);
+        const server = await device.gatt.connect();
+        for (const serviceUuid of KNOWN_PRINTER_SERVICES) {
+          try {
+            const service = await server.getPrimaryService(serviceUuid);
+            const chars = await service.getCharacteristics();
+            for (const c of chars) {
+              if (c.properties.write || c.properties.writeWithoutResponse) {
+                activeDevice = device;
+                activeCharacteristic = c;
+                return true;
+              }
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.warn('[Bluetooth] getDevices auto-reconnect failed:', e);
+    }
+  }
+
+  return false;
 }
 
 export async function disconnectPrinter(): Promise<void> {
@@ -148,7 +205,7 @@ async function sendEscPosBytes(bytes: Uint8Array): Promise<void> {
     throw new Error('No Bluetooth printer connected.');
   }
 
-  const CHUNK_SIZE = 40; // Safe BLE payload size to prevent buffer overflow
+  const CHUNK_SIZE = 30; // Very safe BLE payload size for all 58mm printer microcontrollers
   for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
     const chunk = bytes.slice(i, i + CHUNK_SIZE);
     if (activeCharacteristic.properties.writeWithoutResponse) {
@@ -156,8 +213,8 @@ async function sendEscPosBytes(bytes: Uint8Array): Promise<void> {
     } else {
       await activeCharacteristic.writeValue(chunk);
     }
-    // Small 15ms pause between packets to give thermal printhead microcontroller time to buffer
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    // Small 20ms pause between packets to give thermal printhead microcontroller time to buffer
+    await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
 
@@ -336,8 +393,9 @@ interface PrintReceiptParams {
 
 // Print full customer receipt via direct Bluetooth ESC/POS commands
 export async function printDirectBluetoothReceipt(params: PrintReceiptParams): Promise<{ success: boolean; error?: string }> {
-  if (!isPrinterConnected()) {
-    return { success: false, error: 'Printer not connected.' };
+  const isConnected = await ensurePrinterConnected();
+  if (!isConnected) {
+    return { success: false, error: 'Printer not connected. Please turn on SC588.' };
   }
 
   const { bill, user, items, subtotal, tax, total, discountAmount, discountValue, discountType, paymentMethod, upiAmount } = params;
@@ -412,19 +470,18 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
       .doubleHeight(false)
       .bold(false);
 
-    // Dynamic UPI QR Code if configured
+    // Dynamic UPI details (clean compatible text)
     const qrAmount = (paymentMethod === 'split' && upiAmount != null && upiAmount > 0) ? upiAmount : total;
     if (user.upiId && qrAmount > 0) {
-      const upiLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${qrAmount.toFixed(2)}&cu=INR`;
       builder
         .divider('-')
         .alignCenter()
         .bold(true)
-        .line('SCAN TO PAY VIA UPI')
+        .line('PAY VIA UPI')
         .bold(false)
-        .qrCode(upiLink)
         .line(`UPI ID: ${user.upiId}`)
-        .line('GPay / PhonePe / Paytm / BHIM');
+        .line(`Pay Amount: Rs ${qrAmount.toFixed(2)}`)
+        .line('Paytm / PhonePe / GPay / BHIM');
     }
 
     // Footer

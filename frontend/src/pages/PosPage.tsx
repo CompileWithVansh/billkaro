@@ -59,7 +59,14 @@ import ReportsTab from '../components/ReportsTab';
 import SettingsTab from '../components/SettingsTab';
 import { nextItemColor } from '../colors';
 import { printBill } from '../components/PrintReceipt';
-import { isPrinterConnected, printDirectBluetoothReceipt } from '../utils/bluetoothPrinter';
+import {
+  isPrinterConnected,
+  ensurePrinterConnected,
+  connectPrinter,
+  getConnectedDeviceName,
+  isWebBluetoothSupported,
+  printDirectBluetoothReceipt,
+} from '../utils/bluetoothPrinter';
 import { saveCachedItems, getCachedItems, queueOfflineBill, syncPendingBills } from '../offlineStore';
 
 const LEGACY_TABS_KEY = 'billkaro_tabs';
@@ -822,19 +829,53 @@ export default function PosPage() {
           upiAmount: details.upiAmount,
         };
 
-        if (isPrinterConnected()) {
+        const isConn = await ensurePrinterConnected();
+        if (isConn) {
           try {
             const btRes = await printDirectBluetoothReceipt(printParams);
-            if (!btRes.success) {
-              console.warn('Bluetooth print failed, falling back to browser print:', btRes.error);
+            if (btRes.success) {
+              alert(`✅ Bill ${invNumber} printed on ${getConnectedDeviceName() || 'SC588'}!`);
+              clearActiveBill();
+              setShowPayment(false);
+              return;
+            } else {
+              console.warn('Bluetooth print failed:', btRes.error);
+              alert(`⚠️ Bluetooth printer: ${btRes.error || 'Check printer.'}`);
+              if (window.confirm('Would you like to open browser print dialog instead?')) {
+                await printBill(printParams);
+              }
+            }
+          } catch (err: any) {
+            console.warn('Bluetooth print error:', err);
+            alert(`⚠️ Bluetooth printer: ${err.message || 'Check printer.'}`);
+            if (window.confirm('Would you like to open browser print dialog instead?')) {
               await printBill(printParams);
             }
-          } catch (err) {
-            console.warn('Bluetooth print error, falling back:', err);
-            await printBill(printParams);
           }
         } else {
-          await printBill(printParams);
+          // If a Bluetooth printer was previously configured, prompt to connect directly
+          const pairedName = typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_bt_printer_name') : null;
+          if (pairedName && isWebBluetoothSupported()) {
+            const shouldReconnect = window.confirm(
+              `🖨️ ${pairedName} is not connected. Tap OK to reconnect your printer and print now, or Cancel for browser print.`
+            );
+            if (shouldReconnect) {
+              const connRes = await connectPrinter();
+              if (connRes.success) {
+                const btRes = await printDirectBluetoothReceipt(printParams);
+                if (btRes.success) {
+                  alert(`✅ Bill ${invNumber} printed on ${connRes.deviceName || 'SC588'}!`);
+                  clearActiveBill();
+                  setShowPayment(false);
+                  return;
+                }
+              }
+            } else {
+              await printBill(printParams);
+            }
+          } else {
+            await printBill(printParams);
+          }
         }
       } else if (details.action === 'whatsapp') {
         const itemsList = activeBill.lines
