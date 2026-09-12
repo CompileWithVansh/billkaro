@@ -73,6 +73,16 @@ app.use(
   })
 );
 
+// Lock down hardware permissions & strip PaaS provider disclosure
+app.use((_req, res, next) => {
+  res.setHeader(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=(), payment=(), usb=()'
+  );
+  res.removeHeader('X-Render-Origin-Server');
+  next();
+});
+
 // Secure CORS configuration
 app.use(cors(getCorsOptions(isProd)));
 app.use(express.json({ limit: '2mb' }));
@@ -187,6 +197,14 @@ app.use(['/api/auth', '/api/items', '/api/bills'], (_req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/bills', billRoutes);
+
+// Explicitly block dotfiles (.env, .git, etc.) and hidden files from falling into the SPA catch-all
+app.use((req, res, next) => {
+  if (req.path.startsWith('/.') || req.path.includes('/.')) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  next();
+});
 
 // ---------------- Static frontend ----------------
 const distPath = join(__dirname, '..', '..', 'frontend', 'dist');
