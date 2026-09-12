@@ -2,7 +2,8 @@
 // Compatible with SC588, MPT-II, POS-58, Everycom, and standard 58mm thermal printers
 
 import type { Bill, Item, User } from '../types';
-import { getItemDesc, getBillDisplayLabel } from '../types';
+import { getItemDesc, formatInvoiceNumber } from '../types';
+import QRCode from 'qrcode';
 
 // Common BLE GATT Service UUIDs used by 58mm / 80mm thermal receipt printers
 const KNOWN_PRINTER_SERVICES = [
@@ -278,14 +279,23 @@ class EscPosBuilder {
   }
 
   divider(char: string = '-'): this {
+    this.bold(true);
     this.line(char.repeat(32));
+    this.bold(false);
     return this;
   }
 
   // Two column line: left-aligned text and right-aligned text padded to 32 chars
   twoCol(left: string, right: string): this {
-    const spaceCount = Math.max(1, 32 - left.length - right.length);
-    this.line(left + ' '.repeat(spaceCount) + right);
+    let l = left;
+    let r = right;
+    // Guard against 32-column overflow that causes ugly mid-word wrapping
+    if (l.length + r.length >= 31) {
+      const maxR = Math.max(8, 31 - l.length);
+      r = r.slice(0, maxR);
+    }
+    const spaceCount = Math.max(1, 32 - l.length - r.length);
+    this.line(l + ' '.repeat(spaceCount) + r);
     return this;
   }
 
@@ -299,30 +309,53 @@ class EscPosBuilder {
     return this;
   }
 
-  // Native ESC/POS QR Code generator (GS ( k)
-  qrCode(data: string): this {
-    const bytes = textToBytes(data);
-    const len = bytes.length + 3;
-    const pL = len & 0xff;
-    const pH = (len >> 8) & 0xff;
+  // Universal ESC/POS Raster Bit-Image QR Code - 100% supported by PSF588, SC588 & all thermal printers
+  rasterQrCode(text: string): this {
+    try {
+      const qr = QRCode.create(text, { errorCorrectionLevel: 'M' });
+      const modCount = qr.modules.size;
+      const scale = 3; // 3 dots per module (ideal size on 58mm: ~105 dots wide)
+      const quiet = 2; // 2 modules quiet zone
+      const totalModules = modCount + quiet * 2;
+      const widthDots = totalModules * scale;
+      const heightDots = widthDots;
+      const bytesPerLine = Math.ceil(widthDots / 8);
 
-    // 1. Set QR model 2
-    this.buffer.push(0x1d, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00);
+      // Center the QR image on 384-dot 58mm paper
+      const leftPaddingDots = Math.max(0, Math.floor((384 - widthDots) / 2));
+      const leftPaddingBytes = Math.floor(leftPaddingDots / 8);
+      const totalBytesPerLine = leftPaddingBytes + bytesPerLine;
 
-    // 2. Set QR module size (5 for 58mm)
-    this.buffer.push(0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, 0x05);
+      // GS v 0 0 xL xH yL yH (Standard ESC/POS raster bit image)
+      this.buffer.push(0x1d, 0x76, 0x30, 0x00);
+      this.buffer.push(totalBytesPerLine & 0xff, (totalBytesPerLine >> 8) & 0xff);
+      this.buffer.push(heightDots & 0xff, (heightDots >> 8) & 0xff);
 
-    // 3. Set error correction level M
-    this.buffer.push(0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31);
+      for (let y = 0; y < heightDots; y++) {
+        const modY = Math.floor(y / scale) - quiet;
 
-    // 4. Store data
-    this.buffer.push(0x1d, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30);
-    for (let i = 0; i < bytes.length; i++) {
-      this.buffer.push(bytes[i]);
+        // Left padding for center alignment
+        for (let b = 0; b < leftPaddingBytes; b++) {
+          this.buffer.push(0x00);
+        }
+
+        for (let xByte = 0; xByte < bytesPerLine; xByte++) {
+          let byteVal = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            const xDot = xByte * 8 + bit;
+            const modX = Math.floor(xDot / scale) - quiet;
+            if (modY >= 0 && modY < modCount && modX >= 0 && modX < modCount) {
+              if (qr.modules.get(modY, modX)) {
+                byteVal |= 1 << (7 - bit);
+              }
+            }
+          }
+          this.buffer.push(byteVal);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to build raster QR code:', err);
     }
-
-    // 5. Print QR code
-    this.buffer.push(0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30);
     return this;
   }
 
@@ -402,12 +435,8 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
 
   try {
     const builder = new EscPosBuilder();
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const billLabelDisplay = getBillDisplayLabel(bill);
 
-    // Header
+    // Store Name & Info Header (Bold, Centered)
     builder
       .alignCenter()
       .doubleHeight(true)
@@ -421,10 +450,25 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
     if (user.gstin) builder.line(`GSTIN: ${user.gstin}`);
     if (user.fssai) builder.line(`FSSAI: ${user.fssai}`);
 
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    // Clean, short invoice number that fits on 1 single line without breaking
+    const invNumber = bill.savedBillId
+      ? formatInvoiceNumber(bill.savedBillId)
+      : (bill.id ? `INV-${String(bill.id).slice(-4)}` : 'INV-0001');
+
     builder
       .divider('-')
       .twoCol(dateStr, timeStr)
-      .twoCol('Receipt:', billLabelDisplay)
+      .twoCol('Bill No:', invNumber);
+
+    if (bill.label && !bill.label.toLowerCase().startsWith('bill') && !bill.label.toLowerCase().startsWith('inv-')) {
+      builder.twoCol('Table / Order:', bill.label.slice(0, 16));
+    }
+
+    builder
       .divider('-')
       .alignLeft()
       .bold(true)
@@ -470,19 +514,18 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
       .doubleHeight(false)
       .bold(false);
 
-    // Dynamic UPI details (clean compatible text) - only if enabled in store settings
+    // Dynamic UPI QR code (compact, zero wasted lines)
     const printQrEnabled = (typeof window !== 'undefined' && localStorage.getItem('billkaro_print_qr_enabled')) !== 'false';
     const qrAmount = (paymentMethod === 'split' && upiAmount != null && upiAmount > 0) ? upiAmount : total;
     if (printQrEnabled && user.upiId && qrAmount > 0) {
+      const upiLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${qrAmount.toFixed(2)}&cu=INR`;
       builder
         .divider('-')
         .alignCenter()
         .bold(true)
-        .line('PAY VIA UPI')
+        .line('SCAN TO PAY')
         .bold(false)
-        .line(`UPI ID: ${user.upiId}`)
-        .line(`Pay Amount: Rs ${qrAmount.toFixed(2)}`)
-        .line('Paytm / PhonePe / GPay / BHIM');
+        .rasterQrCode(upiLink);
     }
 
     // Footer

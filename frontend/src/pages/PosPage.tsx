@@ -62,7 +62,6 @@ import { printBill } from '../components/PrintReceipt';
 import {
   isPrinterConnected,
   ensurePrinterConnected,
-  connectPrinter,
   getConnectedDeviceName,
   isWebBluetoothSupported,
   printDirectBluetoothReceipt,
@@ -250,6 +249,16 @@ export default function PosPage() {
     finalTotal?: number;
     finalTax?: number;
   }>({ paymentMethod: 'upi' });
+
+  // Non-blocking toast notification for high-speed POS billing during rush hours
+  const [posToast, setPosToast] = useState<{ message: string; type?: 'success' | 'warning' | 'info' } | null>(null);
+
+  function showPosToast(message: string, type: 'success' | 'warning' | 'info' = 'success', durationMs = 2600) {
+    setPosToast({ message, type });
+    setTimeout(() => {
+      setPosToast((curr) => (curr?.message === message ? null : curr));
+    }, durationMs);
+  }
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [itemSearch, setItemSearch] = useState('');
@@ -829,53 +838,51 @@ export default function PosPage() {
           upiAmount: details.upiAmount,
         };
 
-        const isConn = await ensurePrinterConnected();
-        if (isConn) {
-          try {
-            const btRes = await printDirectBluetoothReceipt(printParams);
-            if (btRes.success) {
-              alert(`✅ Bill ${invNumber} printed on ${getConnectedDeviceName() || 'PSF588'}!`);
+        // Check if user has explicitly enabled Bluetooth Thermal Printer in settings
+        const btPrinterEnabled = (typeof window !== 'undefined' && localStorage.getItem('billkaro_bt_printer_enabled')) === 'true';
+
+        if (btPrinterEnabled && isWebBluetoothSupported()) {
+          const isConn = await ensurePrinterConnected();
+          if (isConn) {
+            try {
+              const btRes = await printDirectBluetoothReceipt(printParams);
+              if (btRes.success) {
+                // Instant smooth success during rush hours - zero blocking popups!
+                showPosToast(`✅ Bill ${invNumber} printed on ${getConnectedDeviceName() || 'PSF588'}!`, 'success');
+                clearActiveBill();
+                setShowPayment(false);
+                return;
+              } else {
+                console.warn('Bluetooth print failed:', btRes.error);
+                showPosToast(`⚠️ Bluetooth printer: ${btRes.error || 'Check printer'}. Opening print dialog...`, 'warning');
+                await printBill(printParams);
+                clearActiveBill();
+                setShowPayment(false);
+                return;
+              }
+            } catch (err: any) {
+              console.warn('Bluetooth print error:', err);
+              showPosToast('⚠️ Bluetooth error. Opening browser print...', 'warning');
+              await printBill(printParams);
               clearActiveBill();
               setShowPayment(false);
               return;
-            } else {
-              console.warn('Bluetooth print failed:', btRes.error);
-              alert(`⚠️ Bluetooth printer: ${btRes.error || 'Check printer.'}`);
-              if (window.confirm('Would you like to open browser print dialog instead?')) {
-                await printBill(printParams);
-              }
-            }
-          } catch (err: any) {
-            console.warn('Bluetooth print error:', err);
-            alert(`⚠️ Bluetooth printer: ${err.message || 'Check printer.'}`);
-            if (window.confirm('Would you like to open browser print dialog instead?')) {
-              await printBill(printParams);
-            }
-          }
-        } else {
-          // If a Bluetooth printer was previously configured, prompt to connect directly
-          const pairedName = typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_bt_printer_name') : null;
-          if (pairedName && isWebBluetoothSupported()) {
-            const shouldReconnect = window.confirm(
-              `🖨️ ${pairedName} is not connected. Tap OK to reconnect your printer and print now, or Cancel for browser print.`
-            );
-            if (shouldReconnect) {
-              const connRes = await connectPrinter();
-              if (connRes.success) {
-                const btRes = await printDirectBluetoothReceipt(printParams);
-                if (btRes.success) {
-                  alert(`✅ Bill ${invNumber} printed on ${connRes.deviceName || 'PSF588'}!`);
-                  clearActiveBill();
-                  setShowPayment(false);
-                  return;
-                }
-              }
-            } else {
-              await printBill(printParams);
             }
           } else {
+            // Bluetooth enabled in settings, but printer is disconnected/sleeping
+            // Fallback directly to browser print without any blocking confirm dialog!
+            showPosToast('🖨️ Printer disconnected. Opening standard print...', 'info');
             await printBill(printParams);
+            clearActiveBill();
+            setShowPayment(false);
+            return;
           }
+        } else {
+          // Bluetooth printer is turned OFF (or not supported)
+          // Directly open browser print with ZERO popups and ZERO Bluetooth searches!
+          await printBill(printParams);
+          clearActiveBill();
+          setShowPayment(false);
         }
       } else if (details.action === 'whatsapp') {
         const itemsList = activeBill.lines
@@ -1871,6 +1878,38 @@ export default function PosPage() {
           <span className="mobile-nav-label">Settings</span>
         </button>
       </nav>
+
+      {/* Non-blocking POS Toast (Replaces blocking alerts for fast rush hours) */}
+      {posToast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 74,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background:
+              posToast.type === 'warning'
+                ? '#b45309'
+                : posToast.type === 'info'
+                ? '#1e293b'
+                : '#059669',
+            color: '#ffffff',
+            padding: '10px 20px',
+            borderRadius: 14,
+            fontWeight: 700,
+            fontSize: '0.88rem',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            border: '1px solid rgba(255,255,255,0.2)',
+            pointerEvents: 'none',
+          }}
+        >
+          {posToast.message}
+        </div>
+      )}
     </div>
   );
 }

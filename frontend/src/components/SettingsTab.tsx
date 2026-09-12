@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
+import ConnectPrinterModal from './ConnectPrinterModal';
+import { isPrinterConnected, getConnectedDeviceName, printTestReceipt } from '../utils/bluetoothPrinter';
 
 export default function SettingsTab() {
   const { user, updateUser, logout } = useAuth();
@@ -22,6 +24,14 @@ export default function SettingsTab() {
   const [printQr, setPrintQr] = useState<boolean>(
     () => (typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_print_qr_enabled') : null) !== 'false'
   );
+  const [btPrinterEnabled, setBtPrinterEnabled] = useState<boolean>(() => {
+    if (typeof localStorage === 'undefined') return false;
+    const val = localStorage.getItem('billkaro_bt_printer_enabled');
+    if (val !== null) return val === 'true';
+    return Boolean(localStorage.getItem('billkaro_bt_printer_name'));
+  });
+  const [thermalExpanded, setThermalExpanded] = useState<boolean>(false);
+  const [showPairModal, setShowPairModal] = useState<boolean>(false);
   const [busy, setBusy] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
   const [error, setError] = useState('');
@@ -112,6 +122,7 @@ export default function SettingsTab() {
       updateUser(res.data.user);
       localStorage.setItem('billkaro_printer_paper_width', paperWidth);
       localStorage.setItem('billkaro_print_qr_enabled', String(printQr));
+      localStorage.setItem('billkaro_bt_printer_enabled', String(btPrinterEnabled));
       setUpiPassword('');
       setSavedToast(true);
       setTimeout(() => setSavedToast(false), 3000);
@@ -229,124 +240,233 @@ export default function SettingsTab() {
           </div>
         </div>
 
-        {/* SECTION: Thermal Receipt & Printer Settings */}
+        {/* SECTION: Thermal Receipt & Printer Settings (Compact Accordion) */}
         <div style={{ background: 'var(--panel-2, #1e293b)', border: '1px solid var(--border)', borderRadius: 14, padding: 16 }}>
-          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span>🖨️</span> Thermal Receipt & Printer
-          </div>
-
-          <div className="field">
-            <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: 6 }}>
-              Printer Paper Roll Width
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setPaperWidth('58mm');
-                  localStorage.setItem('billkaro_printer_paper_width', '58mm');
-                }}
-                style={{
-                  padding: '12px 10px',
-                  borderRadius: 10,
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  border: paperWidth === '58mm' ? '2px solid #f59e0b' : '1px solid var(--border)',
-                  background: paperWidth === '58mm' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg, #0f172a)',
-                  color: paperWidth === '58mm' ? '#fbbf24' : '#cbd5e1',
-                  textAlign: 'left',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>58mm (2-inch Standard)</span>
-                  {paperWidth === '58mm' && <span>✓</span>}
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 4, fontWeight: 400 }}>
-                  PSF588, SC588, Nirvana, Everycom, POS-58
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setPaperWidth('80mm');
-                  localStorage.setItem('billkaro_printer_paper_width', '80mm');
-                }}
-                style={{
-                  padding: '12px 10px',
-                  borderRadius: 10,
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  border: paperWidth === '80mm' ? '2px solid #f59e0b' : '1px solid var(--border)',
-                  background: paperWidth === '80mm' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg, #0f172a)',
-                  color: paperWidth === '80mm' ? '#fbbf24' : '#cbd5e1',
-                  textAlign: 'left',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>80mm (3-inch Wide)</span>
-                  {paperWidth === '80mm' && <span>✓</span>}
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 4, fontWeight: 400 }}>
-                  Epson, TVS, Citizen (Large supermarket & dining bills)
-                </div>
-              </button>
+          <div
+            onClick={() => setThermalExpanded(!thermalExpanded)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              userSelect: 'none',
+              gap: 8,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>🖨️</span> Thermal Printer & Receipts
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                  {paperWidth}
+                </span>
+                <span style={{ background: btPrinterEnabled ? 'rgba(16, 185, 129, 0.18)' : 'rgba(148, 163, 184, 0.18)', color: btPrinterEnabled ? '#34d399' : '#94a3b8', padding: '1px 6px', borderRadius: 4 }}>
+                  {btPrinterEnabled ? '🔵 Bluetooth ON' : '⚪ Standard Print'}
+                </span>
+                <span style={{ background: printQr ? 'rgba(56, 189, 248, 0.18)' : 'rgba(16, 185, 129, 0.18)', color: printQr ? '#38bdf8' : '#34d399', padding: '1px 6px', borderRadius: 4 }}>
+                  {printQr ? 'QR Code ON' : '🟢 QR OFF (Save Paper)'}
+                </span>
+              </div>
             </div>
-            <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 6, display: 'block' }}>
-              Selected width formats print margins and columns natively with zero downscale blur.
-            </span>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#f59e0b', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>
+              <span>{thermalExpanded ? 'Close ▲' : 'Configure ▼'}</span>
+            </div>
           </div>
 
-          {/* Toggle: Print UPI QR Code on Receipts */}
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc' }}>
-                  Print UPI Payment QR Code
+          {thermalExpanded && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* TOGGLE 1: Bluetooth Thermal Printer Mode */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#f8fafc' }}>
+                    Bluetooth Thermal Printer (PSF588)
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: btPrinterEnabled ? '#34d399' : '#94a3b8', marginTop: 2 }}>
+                    {btPrinterEnabled
+                      ? '🟢 Enabled — Direct 1-click Bluetooth printing to PSF588.'
+                      : '⚪ Disabled — Standard browser print. Disables all Bluetooth popups & reconnect prompts.'}
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.72rem', color: printQr ? '#94a3b8' : '#34d399', marginTop: 2 }}>
-                  {printQr
-                    ? 'QR Code will be printed on bills (scannable with GPay, PhonePe, Paytm).'
-                    : '🟢 QR Code is OFF — Saves 2–3 cm paper per receipt to save paper roll!'}
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !btPrinterEnabled;
+                    setBtPrinterEnabled(next);
+                    localStorage.setItem('billkaro_bt_printer_enabled', String(next));
+                  }}
+                  style={{
+                    width: 50,
+                    height: 28,
+                    borderRadius: 14,
+                    background: btPrinterEnabled ? '#10b981' : '#475569',
+                    border: 'none',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    transition: 'background 0.2s',
+                    flexShrink: 0,
+                    padding: 2,
+                  }}
+                  aria-label="Toggle Bluetooth Printer"
+                >
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      background: '#ffffff',
+                      transform: btPrinterEnabled ? 'translateX(22px)' : 'translateX(0px)',
+                      transition: 'transform 0.2s',
+                    }}
+                  />
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !printQr;
-                  setPrintQr(next);
-                  localStorage.setItem('billkaro_print_qr_enabled', String(next));
-                }}
-                style={{
-                  width: 50,
-                  height: 28,
-                  borderRadius: 14,
-                  background: printQr ? '#10b981' : '#475569',
-                  border: 'none',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'background 0.2s',
-                  flexShrink: 0,
-                  padding: 2,
-                }}
-                aria-label="Toggle Print QR Code"
-              >
-                <div
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: '50%',
-                    background: '#ffffff',
-                    transform: printQr ? 'translateX(22px)' : 'translateX(0px)',
-                    transition: 'transform 0.2s',
+              {/* Paired Device Status & Connection Button */}
+              {btPrinterEnabled && (
+                <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: 10, padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ fontSize: '0.78rem', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>{isPrinterConnected() ? '🟢' : '⚪'}</span>
+                    <span>Device: <strong>{getConnectedDeviceName() || (typeof localStorage !== 'undefined' && localStorage.getItem('billkaro_bt_printer_name')) || 'PSF588'}</strong></span>
+                    <span style={{ fontSize: '0.7rem', color: isPrinterConnected() ? '#34d399' : '#94a3b8' }}>
+                      ({isPrinterConnected() ? 'Connected' : 'Offline / Sleeping'})
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      className="btn ghost sm-btn"
+                      onClick={() => setShowPairModal(true)}
+                      style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: 'rgba(245, 158, 11, 0.4)', color: '#fbbf24' }}
+                    >
+                      🔍 Pair / Reconnect
+                    </button>
+                    {isPrinterConnected() && (
+                      <button
+                        type="button"
+                        className="btn ghost sm-btn"
+                        onClick={() => printTestReceipt()}
+                        style={{ padding: '4px 10px', fontSize: '0.75rem', borderColor: 'rgba(16, 185, 129, 0.4)', color: '#34d399' }}
+                      >
+                        🧪 Test Print
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TOGGLE 2: Print UPI QR Code on Receipts */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#f8fafc' }}>
+                    Print UPI Payment QR Code
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: printQr ? '#94a3b8' : '#34d399', marginTop: 2 }}>
+                    {printQr
+                      ? 'QR Code will be printed on bills (scannable with GPay, PhonePe, Paytm).'
+                      : '🟢 QR Code is OFF — Saves 2–3 cm paper per receipt to save paper roll!'}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !printQr;
+                    setPrintQr(next);
+                    localStorage.setItem('billkaro_print_qr_enabled', String(next));
                   }}
-                />
-              </button>
+                  style={{
+                    width: 50,
+                    height: 28,
+                    borderRadius: 14,
+                    background: printQr ? '#10b981' : '#475569',
+                    border: 'none',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    transition: 'background 0.2s',
+                    flexShrink: 0,
+                    padding: 2,
+                  }}
+                  aria-label="Toggle Print QR Code"
+                >
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      background: '#ffffff',
+                      transform: printQr ? 'translateX(22px)' : 'translateX(0px)',
+                      transition: 'transform 0.2s',
+                    }}
+                  />
+                </button>
+              </div>
+
+              {/* Paper Roll Width */}
+              <div className="field">
+                <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: 6 }}>
+                  Printer Paper Roll Width
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaperWidth('58mm');
+                      localStorage.setItem('billkaro_printer_paper_width', '58mm');
+                    }}
+                    style={{
+                      padding: '10px',
+                      borderRadius: 10,
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: paperWidth === '58mm' ? '2px solid #f59e0b' : '1px solid var(--border)',
+                      background: paperWidth === '58mm' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg, #0f172a)',
+                      color: paperWidth === '58mm' ? '#fbbf24' : '#cbd5e1',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>58mm (2-inch Standard)</span>
+                      {paperWidth === '58mm' && <span>✓</span>}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 3, fontWeight: 400 }}>
+                      PSF588, SC588, Nirvana, Everycom, POS-58
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaperWidth('80mm');
+                      localStorage.setItem('billkaro_printer_paper_width', '80mm');
+                    }}
+                    style={{
+                      padding: '10px',
+                      borderRadius: 10,
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: paperWidth === '80mm' ? '2px solid #f59e0b' : '1px solid var(--border)',
+                      background: paperWidth === '80mm' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg, #0f172a)',
+                      color: paperWidth === '80mm' ? '#fbbf24' : '#cbd5e1',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>80mm (3-inch Wide)</span>
+                      {paperWidth === '80mm' && <span>✓</span>}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 3, fontWeight: 400 }}>
+                      Epson, TVS, Citizen (Supermarket & dining bills)
+                    </div>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* SECTION 2: Payment Settings */}
@@ -672,6 +792,8 @@ export default function SettingsTab() {
           </button>
         </div>
       </div>
+
+      {showPairModal && <ConnectPrinterModal onClose={() => setShowPairModal(false)} />}
     </div>
   );
 }

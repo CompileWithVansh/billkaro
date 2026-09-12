@@ -303,10 +303,8 @@ export async function printBill({
   ${qrDataUrl ? `
   <hr class="divider" />
   <div class="qr-block">
+    <div class="qr-title">SCAN TO PAY</div>
     <img src="${qrDataUrl}" alt="UPI QR Code" class="qr-img" />
-    <div class="qr-title">SCAN TO PAY VIA UPI</div>
-    <div class="qr-sub">GPay • PhonePe • Paytm • BHIM</div>
-    ${user.upiId ? `<div class="qr-upi">UPI: ${escHtml(user.upiId)}</div>` : ''}
   </div>
   ` : ''}
 
