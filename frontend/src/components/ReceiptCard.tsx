@@ -35,7 +35,7 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
   discountType,
   discountValue,
   discountAmount,
-  cashAmount,
+  cashAmount: _cashAmount,
   upiAmount,
 }, ref) => {
   const [qrUrl, setQrUrl] = useState<string>('');
@@ -205,28 +205,6 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
           </div>
         </div>
       )}
-
-      {/* Footer Payment Method / Status */}
-      <div
-        style={{
-          marginTop: '16px',
-          textAlign: 'center',
-          padding: '10px',
-          borderRadius: '10px',
-          background: paymentMethod === 'udhaar' ? '#fee2e2' : (paymentMethod === 'split' ? '#f3e8ff' : '#e0f2fe'),
-          color: paymentMethod === 'udhaar' ? '#991b1b' : (paymentMethod === 'split' ? '#6b21a8' : '#0369a1'),
-          fontWeight: '700',
-          fontSize: '13px',
-          textTransform: 'uppercase',
-          letterSpacing: '0.5px',
-        }}
-      >
-        {paymentMethod === 'udhaar'
-          ? 'STATUS: UDHAAR / UNPAID'
-          : paymentMethod === 'split'
-          ? `PAID VIA SPLIT (CASH: ₹${(cashAmount || 0).toFixed(2)} | UPI: ₹${(upiAmount || 0).toFixed(2)})`
-          : `PAYMENT METHOD: ${paymentMethod.toUpperCase()}`}
-      </div>
 
       <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '11px', color: '#94a3b8' }}>
         Thank you for your business! • Powered by BillKaro

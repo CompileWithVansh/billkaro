@@ -1,4 +1,5 @@
-import { getItemDesc, type Bill, type Item, type User } from '../types';
+import QRCode from 'qrcode';
+import { getItemDesc, getBillDisplayLabel, type Bill, type Item, type User } from '../types';
 
 interface Props {
   bill: Bill;
@@ -15,7 +16,7 @@ interface Props {
   upiAmount?: number | null;
 }
 
-export function printBill({
+export async function printBill({
   bill,
   user,
   items,
@@ -26,7 +27,7 @@ export function printBill({
   discountValue,
   discountAmount,
   paymentMethod,
-  cashAmount,
+  cashAmount: _cashAmount,
   upiAmount,
 }: Props) {
   const now = new Date();
@@ -36,6 +37,18 @@ export function printBill({
   const timeStr = now.toLocaleTimeString('en-IN', {
     hour: '2-digit', minute: '2-digit', hour12: true,
   });
+
+  // Generate UPI QR code for print if store has a UPI ID configured
+  let qrDataUrl = '';
+  const qrAmount = (paymentMethod === 'split' && upiAmount != null && upiAmount > 0) ? upiAmount : total;
+  if (user?.upiId && qrAmount > 0) {
+    const upiLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${qrAmount.toFixed(2)}&cu=INR`;
+    try {
+      qrDataUrl = await QRCode.toDataURL(upiLink, { width: 160, margin: 1 });
+    } catch (err) {
+      console.warn('Failed to generate QR code for receipt print:', err);
+    }
+  }
 
   // Build item rows — each row has a light separator line beneath it,
   // and shows the item description/category line under the item name.
@@ -97,28 +110,14 @@ export function printBill({
       </tr>` : ''}`;
   }
 
-  let paymentRow = '';
-  if (paymentMethod === 'split' && cashAmount != null && upiAmount != null) {
-    paymentRow = `<tr class="summary-row" style="font-size: 10px; color: #333;">
-      <td colspan="4" style="text-align: right; padding-top: 4px;">
-        Paid: SPLIT (Cash ₹${cashAmount.toFixed(2)} | UPI ₹${upiAmount.toFixed(2)})
-      </td>
-    </tr>`;
-  } else if (paymentMethod) {
-    paymentRow = `<tr class="summary-row" style="font-size: 10px; color: #333;">
-      <td colspan="4" style="text-align: right; padding-top: 4px;">
-        Paid: ${paymentMethod.toUpperCase()}
-      </td>
-    </tr>`;
-  }
-
   const totalQty = bill.lines.reduce((s, l) => s + l.qty, 0);
+  const billLabelDisplay = getBillDisplayLabel(bill);
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Receipt — ${escHtml(bill.label)}</title>
+  <title>Receipt — ${escHtml(billLabelDisplay)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -193,6 +192,34 @@ export function printBill({
     .total-row td:first-child { text-align: right; }
     .total-row td:last-child  { text-align: right; }
 
+    /* ---------- QR Code ---------- */
+    .qr-block {
+      text-align: center;
+      margin: 8px 0 4px 0;
+    }
+    .qr-img {
+      width: 125px;
+      height: 125px;
+      margin: 0 auto;
+      display: block;
+    }
+    .qr-title {
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+    .qr-sub {
+      font-size: 8px;
+      color: #444;
+      margin-top: 2px;
+    }
+    .qr-upi {
+      font-size: 8px;
+      color: #666;
+      margin-top: 1px;
+    }
+
     /* ---------- Footer ---------- */
     .footer       { text-align: center; font-size: 10px; color: #555; margin-top: 8px; }
     .footer .powered { font-size: 9px; color: #888; margin-top: 3px; }
@@ -215,7 +242,7 @@ export function printBill({
 
   <div class="meta">
     <span>${dateStr} &nbsp; ${timeStr}</span>
-    <span><strong>${escHtml(bill.label)}</strong></span>
+    <span><strong>${escHtml(billLabelDisplay)}</strong></span>
   </div>
 
   <hr class="divider" />
@@ -248,7 +275,6 @@ export function printBill({
         <td colspan="3">${taxRate > 0 && isTaxInclusive ? 'Grand Total' : 'TOTAL'}</td>
         <td>₹${total.toFixed(2)}</td>
       </tr>
-      ${paymentRow}
       ${taxRate > 0 && isTaxInclusive ? `
       <tr class="summary-row" style="font-size: 9px; color: #555;">
         <td colspan="4" style="text-align: center; padding-top: 4px; font-style: italic;">
@@ -258,12 +284,32 @@ export function printBill({
     </tbody>
   </table>
 
+  ${qrDataUrl ? `
+  <hr class="divider" />
+  <div class="qr-block">
+    <img src="${qrDataUrl}" alt="UPI QR Code" class="qr-img" />
+    <div class="qr-title">SCAN TO PAY VIA UPI</div>
+    <div class="qr-sub">GPay • PhonePe • Paytm • BHIM</div>
+    ${user.upiId ? `<div class="qr-upi">UPI: ${escHtml(user.upiId)}</div>` : ''}
+  </div>
+  ` : ''}
+
   <hr class="divider" />
 
   <div class="footer">
     Thanks & Visit Again !!!!!
     <div class="powered">Powered by BillKaro</div>
   </div>
+
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        window.focus();
+        window.print();
+        window.onafterprint = function() { window.close(); };
+      }, 150);
+    });
+  </script>
 </body>
 </html>`;
 
@@ -275,9 +321,11 @@ export function printBill({
   win.document.write(html);
   win.document.close();
   win.onload = () => {
-    win.focus();
-    win.print();
-    win.onafterprint = () => win.close();
+    setTimeout(() => {
+      win.focus();
+      win.print();
+      win.onafterprint = () => win.close();
+    }, 150);
   };
 }
 

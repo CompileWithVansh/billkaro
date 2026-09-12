@@ -750,8 +750,8 @@ export default function PosPage() {
         finalTax: billTax,
       });
 
-      if (details.action === 'print' && details.paymentMethod !== 'udhaar' && user) {
-        printBill({
+      if (details.action === 'print' && user) {
+        await printBill({
           bill: { ...activeBill, label: `Bill No: ${invNumber}` },
           user,
           items,
@@ -777,9 +777,6 @@ export default function PosPage() {
         const discountText = details.discountAmount && details.discountAmount > 0
           ? `\nDiscount (${details.discountType === 'percent' ? `${details.discountValue}%` : '₹' + details.discountValue}): -₹${details.discountAmount.toFixed(2)}`
           : '';
-        const splitText = details.paymentMethod === 'split'
-          ? `SPLIT (Cash: ₹${(details.cashAmount || 0).toFixed(2)} + UPI: ₹${(details.upiAmount || 0).toFixed(2)})`
-          : (details.paymentMethod || 'UPI').toUpperCase();
 
         const halfRate = +(taxPercent / 2).toFixed(2);
         const taxText = taxPercent > 0 && billTax > 0
@@ -788,7 +785,14 @@ export default function PosPage() {
         const gstinHeader = user?.gstin ? `\nGSTIN: ${user.gstin}` : '';
         const fssaiHeader = user?.fssai ? `\nFSSAI: ${user.fssai}` : '';
 
-        const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*${gstinHeader}${fssaiHeader}\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill No: *${invNumber}*${activeBill.label ? ` (Table: ${activeBill.label})` : ''}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${discountText}${taxText}\n*Total Amount: ₹${billTotal.toFixed(2)}*\nPayment: ${details.paymentMethod === 'udhaar' ? 'UDHAAR / UNPAID' : `PAID via ${splitText}`}\n----------------------------------\n\n${details.paymentMethod === 'split' ? `(Remaining UPI: ₹${(details.upiAmount || 0).toFixed(2)} payable via QR)\n` : ''}Thank you for visiting us!`;
+        let upiSection = '';
+        if (user?.upiId) {
+          const upiAmountToPay = (details.paymentMethod === 'split' && details.upiAmount != null && details.upiAmount > 0) ? details.upiAmount : billTotal;
+          const upiDeepLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${Number(upiAmountToPay).toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Bill-${invNumber}`)}`;
+          upiSection = `\n💳 *UPI ID:* \`${user.upiId}\`\n📲 *UPI Pay Link:* ${upiDeepLink}\n`;
+        }
+
+        const textMessage = `*BillKaro Receipt — ${user?.storeName || 'BillKaro'}*${gstinHeader}${fssaiHeader}\nDate: ${new Date().toLocaleDateString('en-IN')}\nBill No: *${invNumber}*${activeBill.label ? ` (Table: ${activeBill.label})` : ''}${details.customerName ? `\nCustomer: ${details.customerName}` : ''}\n\n*Items Ordered:*\n${itemsList}\n\n----------------------------------\nSubtotal: ₹${subtotal.toFixed(2)}${discountText}${taxText}\n*Total Amount: ₹${billTotal.toFixed(2)}*\n----------------------------------${upiSection}\nThank you for visiting us!`;
 
         // Microtick to ensure ReceiptCard receives invoiceNumber before snapshot
         await new Promise((r) => setTimeout(r, 120));
