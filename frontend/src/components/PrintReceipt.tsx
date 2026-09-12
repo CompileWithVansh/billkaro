@@ -38,13 +38,23 @@ export async function printBill({
     hour: '2-digit', minute: '2-digit', hour12: true,
   });
 
+  // Read store printer paper width setting (defaults to 58mm standard for Indian POS)
+  const paperWidth = (typeof window !== 'undefined' && localStorage.getItem('billkaro_printer_paper_width')) || '58mm';
+  const is58mm = paperWidth === '58mm';
+
   // Generate UPI QR code for print if store has a UPI ID configured
   let qrDataUrl = '';
   const qrAmount = (paymentMethod === 'split' && upiAmount != null && upiAmount > 0) ? upiAmount : total;
   if (user?.upiId && qrAmount > 0) {
     const upiLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${qrAmount.toFixed(2)}&cu=INR`;
     try {
-      qrDataUrl = await QRCode.toDataURL(upiLink, { width: 160, margin: 1 });
+      // Size QR code to whole printer dots (~110px for 58mm / 384-dot printable width to avoid fractional-dot smearing)
+      qrDataUrl = await QRCode.toDataURL(upiLink, {
+        width: is58mm ? 110 : 140,
+        margin: 0,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#ffffff' },
+      });
     } catch (err) {
       console.warn('Failed to generate QR code for receipt print:', err);
     }
@@ -77,7 +87,7 @@ export async function printBill({
   const effectiveDiscountValue = discountValue !== undefined ? discountValue : bill.discountValue;
 
   const discountRow = effectiveDiscount > 0
-    ? `<tr class="summary-row" style="font-weight: 600;">
+    ? `<tr class="summary-row" style="font-weight: 700;">
          <td colspan="3">Discount ${effectiveDiscountType === 'percent' ? `(${effectiveDiscountValue}%)` : ''}</td>
          <td>- ₹${effectiveDiscount.toFixed(2)}</td>
        </tr>`
@@ -104,7 +114,7 @@ export async function printBill({
         <td>₹${sgst.toFixed(2)}</td>
       </tr>
       ${Math.abs(roundOff) >= 0.005 ? `
-      <tr class="summary-row" style="font-size: 10px; color: #555;">
+      <tr class="summary-row" style="font-size: ${is58mm ? '9px' : '10px'}; color: #222;">
         <td colspan="3">Round off</td>
         <td>${roundOff > 0 ? `+ ₹${roundOff.toFixed(2)}` : `- ₹${Math.abs(roundOff).toFixed(2)}`}</td>
       </tr>` : ''}`;
@@ -122,112 +132,117 @@ export async function printBill({
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     @page {
-      size: 80mm auto;
-      margin: 4mm 0;
+      size: ${is58mm ? '58mm auto' : '80mm auto'};
+      margin: ${is58mm ? '1.5mm 0' : '4mm 0'};
     }
 
     body {
       font-family: 'Courier New', Courier, monospace;
-      font-size: 12px;
-      color: #000;
-      background: #fff;
-      width: 76mm;
+      font-size: ${is58mm ? '10.5px' : '12px'};
+      font-weight: 600;
+      color: #000000;
+      background: #ffffff;
+      width: ${is58mm ? '48mm' : '76mm'};
       margin: 0 auto;
-      padding: 6px 4px;
+      padding: ${is58mm ? '2mm 0' : '6px 4px'};
+      -webkit-font-smoothing: none;
+      text-rendering: geometricPrecision;
     }
 
     /* ---------- Header ---------- */
     .store-name {
-      font-size: 18px;
-      font-weight: bold;
+      font-size: ${is58mm ? '15px' : '18px'};
+      font-weight: 800;
       text-align: center;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: ${is58mm ? '0.5px' : '1px'};
       margin-bottom: 2px;
     }
     .store-sub {
       text-align: center;
-      font-size: 10px;
-      color: #333;
-      margin-bottom: 2px;
+      font-size: ${is58mm ? '9px' : '10px'};
+      color: #000000;
+      margin-bottom: 1.5px;
     }
 
     /* ---------- Dividers ---------- */
-    .divider      { border: none; border-top: 1px dashed #000; margin: 6px 0; }
-    .divider-solid{ border: none; border-top: 1px solid  #000; margin: 6px 0; }
+    .divider       { border: none; border-top: 1px dashed #000000; margin: ${is58mm ? '4px 0' : '6px 0'}; }
+    .divider-solid { border: none; border-top: 1px solid  #000000; margin: ${is58mm ? '4px 0' : '6px 0'}; }
 
-    /* thin line between each item row */
-    .row-divider  { border: none; border-top: 1px dotted #aaa; margin: 0; }
+    /* Thin line between each item row */
+    .row-divider  { border: none; border-top: 1px dotted #555555; margin: 0; }
     .item-sep td  { padding: 0; }
 
     /* ---------- Meta ---------- */
     .meta {
       display: flex;
       justify-content: space-between;
-      font-size: 11px;
+      font-size: ${is58mm ? '9.5px' : '11px'};
+      font-weight: 700;
     }
 
     /* ---------- Item table ---------- */
     table { width: 100%; border-collapse: collapse; }
-    th    { font-size: 11px; padding: 2px 0; }
-    td    { font-size: 11px; padding: 2px 0; vertical-align: top; }
+    th    { font-size: ${is58mm ? '9.5px' : '11px'}; font-weight: 800; padding: 2px 0; border-bottom: 1px dashed #000000; }
+    td    { font-size: ${is58mm ? '9.5px' : '11px'}; padding: 2px 0; vertical-align: top; }
 
-    .col-name  { text-align: left;  width: 48%; }
-    .col-qty   { text-align: center; width: 14%; }
-    .col-price { text-align: right;  width: 18%; }
-    .col-total { text-align: right;  width: 20%; }
+    .col-name  { text-align: left;   width: ${is58mm ? '44%' : '48%'}; }
+    .col-qty   { text-align: center; width: ${is58mm ? '14%' : '14%'}; }
+    .col-price { text-align: right;  width: ${is58mm ? '20%' : '18%'}; }
+    .col-total { text-align: right;  width: ${is58mm ? '22%' : '20%'}; }
 
     .item-name  { text-align: left; }
-    .item-desc  { font-size: 9px; color: #555; padding-left: 2px; }
+    .item-desc  { font-size: ${is58mm ? '8px' : '9px'}; color: #222222; padding-left: 1px; }
     .item-qty   { text-align: center; }
     .item-price { text-align: right; }
     .item-total { text-align: right; }
 
     /* ---------- Summary rows ---------- */
-    .summary-row td:first-child { text-align: right; padding-right: 8px; }
+    .summary-row td:first-child { text-align: right; padding-right: 6px; }
     .summary-row td:last-child  { text-align: right; }
 
-    .total-row { font-size: 15px; font-weight: bold; }
-    .total-row td { padding: 4px 0; }
+    .total-row { font-size: ${is58mm ? '13px' : '15px'}; font-weight: 800; }
+    .total-row td { padding: 3px 0; }
     .total-row td:first-child { text-align: right; }
     .total-row td:last-child  { text-align: right; }
 
     /* ---------- QR Code ---------- */
     .qr-block {
       text-align: center;
-      margin: 8px 0 4px 0;
+      margin: ${is58mm ? '5px 0 2px 0' : '8px 0 4px 0'};
     }
     .qr-img {
-      width: 125px;
-      height: 125px;
+      width: ${is58mm ? '110px' : '135px'};
+      height: ${is58mm ? '110px' : '135px'};
       margin: 0 auto;
       display: block;
+      image-rendering: pixelated;
     }
     .qr-title {
-      font-size: 10px;
-      font-weight: bold;
+      font-size: ${is58mm ? '9px' : '10px'};
+      font-weight: 800;
       letter-spacing: 0.5px;
-      margin-top: 4px;
+      margin-top: 3px;
     }
     .qr-sub {
-      font-size: 8px;
-      color: #444;
-      margin-top: 2px;
+      font-size: ${is58mm ? '7.5px' : '8px'};
+      color: #111111;
+      margin-top: 1px;
     }
     .qr-upi {
-      font-size: 8px;
-      color: #666;
+      font-size: ${is58mm ? '7.5px' : '8px'};
+      color: #222222;
       margin-top: 1px;
     }
 
     /* ---------- Footer ---------- */
-    .footer       { text-align: center; font-size: 10px; color: #555; margin-top: 8px; }
-    .footer .powered { font-size: 9px; color: #888; margin-top: 3px; }
+    .footer       { text-align: center; font-size: ${is58mm ? '9px' : '10px'}; color: #111111; margin-top: 6px; }
+    .footer .powered { font-size: ${is58mm ? '8px' : '9px'}; color: #444444; margin-top: 2px; }
 
     /* ---------- Screen preview ---------- */
     @media screen {
-      body { width: 360px; border: 1px dashed #ccc; padding: 16px; font-size: 13px; }
-      .store-name { font-size: 20px; }
+      body { width: ${is58mm ? '280px' : '360px'}; border: 1px dashed #ccc; padding: 12px; font-size: 12px; }
+      .store-name { font-size: 18px; }
     }
   </style>
 </head>

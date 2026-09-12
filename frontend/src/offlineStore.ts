@@ -50,6 +50,17 @@ export async function getCachedItems(): Promise<Item[]> {
   }
 }
 
+export async function clearCachedItems(): Promise<void> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('items', 'readwrite');
+    const store = tx.objectStore('items');
+    store.clear();
+  } catch (err) {
+    console.warn('Failed to clear cached items:', err);
+  }
+}
+
 export async function queueOfflineBill(billData: any): Promise<{ tempId: string }> {
   const tempId = `OFF-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
   try {

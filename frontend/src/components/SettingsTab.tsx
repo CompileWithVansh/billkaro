@@ -16,6 +16,9 @@ export default function SettingsTab() {
   );
   const [taxInclusive, setTaxInclusive] = useState(user?.taxInclusive !== false);
   const [taxPercent, setTaxPercent] = useState(String(user?.taxPercent ? user.taxPercent : 5));
+  const [paperWidth, setPaperWidth] = useState<string>(
+    () => localStorage.getItem('billkaro_printer_paper_width') || '58mm'
+  );
   const [busy, setBusy] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
   const [error, setError] = useState('');
@@ -104,6 +107,7 @@ export default function SettingsTab() {
         currentPassword: isUpiChanged ? upiPassword.trim() : undefined,
       });
       updateUser(res.data.user);
+      localStorage.setItem('billkaro_printer_paper_width', paperWidth);
       setUpiPassword('');
       setSavedToast(true);
       setTimeout(() => setSavedToast(false), 3000);
@@ -183,20 +187,20 @@ export default function SettingsTab() {
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="e.g. +91 98765 43210"
+              placeholder="e.g. 9876543210"
               style={{ width: '100%', padding: '10px 12px', fontSize: '16px', borderRadius: 8, background: 'var(--bg, #0f172a)', border: '1px solid var(--border)', color: '#f8fafc' }}
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginTop: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
             <div className="field">
               <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
-                GSTIN Number (Optional)
+                GSTIN (Optional)
               </label>
               <input
                 value={gstin}
-                onChange={(e) => setGstin(e.target.value.toUpperCase())}
-                placeholder="e.g. 09AALFP2704M1ZW"
+                onChange={(e) => setGstin(e.target.value)}
+                placeholder="22AAAAA0000A1Z5"
                 style={{ width: '100%', padding: '10px 12px', fontSize: '16px', borderRadius: 8, background: 'var(--bg, #0f172a)', border: '1px solid var(--border)', color: '#f8fafc' }}
               />
               <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2, display: 'block' }}>
@@ -218,6 +222,77 @@ export default function SettingsTab() {
                 Food safety license number on receipts
               </span>
             </div>
+          </div>
+        </div>
+
+        {/* SECTION: Thermal Receipt & Printer Settings */}
+        <div style={{ background: 'var(--panel-2, #1e293b)', border: '1px solid var(--border)', borderRadius: 14, padding: 16 }}>
+          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>🖨️</span> Thermal Receipt & Printer
+          </div>
+
+          <div className="field">
+            <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: 6 }}>
+              Printer Paper Roll Width
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPaperWidth('58mm');
+                  localStorage.setItem('billkaro_printer_paper_width', '58mm');
+                }}
+                style={{
+                  padding: '12px 10px',
+                  borderRadius: 10,
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  border: paperWidth === '58mm' ? '2px solid #f59e0b' : '1px solid var(--border)',
+                  background: paperWidth === '58mm' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg, #0f172a)',
+                  color: paperWidth === '58mm' ? '#fbbf24' : '#cbd5e1',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>58mm (2-inch Standard)</span>
+                  {paperWidth === '58mm' && <span>✓</span>}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 4, fontWeight: 400 }}>
+                  Nirvana, Everycom, NGX, POS-58 (Standard Indian counter printers)
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPaperWidth('80mm');
+                  localStorage.setItem('billkaro_printer_paper_width', '80mm');
+                }}
+                style={{
+                  padding: '12px 10px',
+                  borderRadius: 10,
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  border: paperWidth === '80mm' ? '2px solid #f59e0b' : '1px solid var(--border)',
+                  background: paperWidth === '80mm' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg, #0f172a)',
+                  color: paperWidth === '80mm' ? '#fbbf24' : '#cbd5e1',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>80mm (3-inch Wide)</span>
+                  {paperWidth === '80mm' && <span>✓</span>}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 4, fontWeight: 400 }}>
+                  Epson, TVS, Citizen (Large supermarket & dining bills)
+                </div>
+              </button>
+            </div>
+            <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 6, display: 'block' }}>
+              Selected width formats print margins and QR code size natively with zero downscale blur.
+            </span>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'billkaro-pwa-v35';
+const CACHE_NAME = 'billkaro-pwa-v36';
 
 
 self.addEventListener('install', (event) => {

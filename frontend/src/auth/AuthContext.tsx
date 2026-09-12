@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { api, setToken, getToken } from '../api';
+import { clearCachedItems } from '../offlineStore';
 import type { User } from '../types';
 
 interface AuthState {
@@ -110,6 +111,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     setToken(null);
     localStorage.removeItem(USER_KEY);
+
+    // Clear all store-specific cart and tab caches so switching restaurants never leaks cart items
+    try {
+      localStorage.removeItem('billkaro_tabs');
+      localStorage.removeItem('billkaro_category_order_v1');
+      localStorage.removeItem('billkaro_show_categories');
+
+      // Purge any scoped billkaro_tabs_* keys
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('billkaro_tabs_') || key.startsWith('billkaro_cat_'))) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to clean store caches on logout:', e);
+    }
+
+    // Purge cached menu items in IndexedDB so the next store starts completely fresh
+    // Note: pending_bills is intentionally preserved so unsynced offline bills aren't lost
+    clearCachedItems().catch((err) => console.warn('Failed to clear cached items on logout:', err));
+
     setUser(null);
   }
 

@@ -60,7 +60,11 @@ import { nextItemColor } from '../colors';
 import { printBill } from '../components/PrintReceipt';
 import { saveCachedItems, getCachedItems, queueOfflineBill, syncPendingBills } from '../offlineStore';
 
-const TABS_KEY = 'billkaro_tabs';
+const LEGACY_TABS_KEY = 'billkaro_tabs';
+
+function getTabsKey(userId?: number): string {
+  return userId ? `billkaro_tabs_${userId}` : LEGACY_TABS_KEY;
+}
 
 function makeLineId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -116,9 +120,26 @@ function billTotal(
   }
 }
 
-function loadTabs(): { bills: Bill[]; activeId?: string } | null {
+function loadTabs(userId?: number): { bills: Bill[]; activeId?: string } | null {
   try {
-    const raw = localStorage.getItem(TABS_KEY);
+    const key = getTabsKey(userId);
+    let raw = localStorage.getItem(key);
+
+    // One-time migration for existing logged-in users:
+    // If scoped key is absent but legacy billkaro_tabs exists, migrate it and delete legacy key
+    if (!raw && userId) {
+      const legacy = localStorage.getItem(LEGACY_TABS_KEY);
+      if (legacy) {
+        raw = legacy;
+        try {
+          localStorage.setItem(key, legacy);
+          localStorage.removeItem(LEGACY_TABS_KEY);
+        } catch (e) {
+          console.warn('Failed to migrate legacy tabs:', e);
+        }
+      }
+    }
+
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed.bills) || parsed.bills.length === 0) return null;
@@ -141,22 +162,53 @@ export default function PosPage() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [mobileView, setMobileView] = useState<'items' | 'cart'>('items');
 
-  const persisted = useMemo(() => loadTabs(), []);
-  const [bills, setBills] = useState<Bill[]>(persisted?.bills ?? [newBill(1)]);
-  const [activeId, setActiveId] = useState<string>(
-    persisted?.activeId && persisted.bills.some((b) => b.id === persisted.activeId)
-      ? persisted.activeId
-      : (persisted?.bills?.[0]?.id ?? '')
-  );
+  const [bills, setBills] = useState<Bill[]>(() => {
+    const p = loadTabs(user?.id);
+    return p?.bills ?? [newBill(1)];
+  });
+  const [activeId, setActiveId] = useState<string>(() => {
+    const p = loadTabs(user?.id);
+    return p?.activeId && p.bills.some((b) => b.id === p.activeId)
+      ? p.activeId
+      : (p?.bills?.[0]?.id ?? '');
+  });
 
-  // Auto-persist all open tabs and draft cart lines to localStorage on every change
+  // Track user.id changes to reload store-specific tabs cleanly on account switch
+  const prevUserIdRef = useRef<number | undefined>(user?.id);
+  useEffect(() => {
+    if (prevUserIdRef.current !== user?.id) {
+      prevUserIdRef.current = user?.id;
+      const loaded = loadTabs(user?.id);
+      if (loaded?.bills && loaded.bills.length > 0) {
+        setBills(loaded.bills);
+        setActiveId(
+          loaded.activeId && loaded.bills.some((b) => b.id === loaded.activeId)
+            ? loaded.activeId
+            : (loaded.bills[0]?.id ?? '')
+        );
+      } else {
+        const fresh = [newBill(1)];
+        setBills(fresh);
+        setActiveId(fresh[0].id);
+      }
+      try {
+        setCategoryOrder(JSON.parse(localStorage.getItem('billkaro_category_order_v1') || '[]'));
+      } catch {
+        setCategoryOrder([]);
+      }
+      fetchItems();
+    }
+  }, [user?.id]);
+
+  // Auto-persist all open tabs and draft cart lines to user-scoped localStorage on every change
   useEffect(() => {
     try {
-      localStorage.setItem(TABS_KEY, JSON.stringify({ bills, activeId }));
+      const key = getTabsKey(user?.id);
+      localStorage.setItem(key, JSON.stringify({ bills, activeId }));
     } catch (e) {
       console.warn('Failed to persist tabs to localStorage:', e);
     }
-  }, [bills, activeId]);
+  }, [bills, activeId, user?.id]);
 
   // Mobile Full-Screen 5-Tab Navigation State ('billing' | 'kitchen' | 'stock' | 'reports' | 'settings')
   const [mobileMainTab, setMobileMainTab] = useState<'billing' | 'kitchen' | 'stock' | 'reports' | 'settings'>('billing');

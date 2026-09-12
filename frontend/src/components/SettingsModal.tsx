@@ -20,6 +20,9 @@ export default function SettingsModal({ onClose }: Props) {
   );
   const [taxInclusive, setTaxInclusive] = useState(user?.taxInclusive !== false);
   const [taxPercent, setTaxPercent] = useState(String(user?.taxPercent ? user.taxPercent : 5));
+  const [paperWidth, setPaperWidth] = useState<string>(
+    () => localStorage.getItem('billkaro_printer_paper_width') || '58mm'
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -96,6 +99,7 @@ export default function SettingsModal({ onClose }: Props) {
         currentPassword: isUpiChanged ? upiPassword.trim() : undefined,
       });
       updateUser(res.data.user);
+      localStorage.setItem('billkaro_printer_paper_width', paperWidth);
       onClose();
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Could not save settings.');
@@ -163,6 +167,72 @@ export default function SettingsModal({ onClose }: Props) {
                 onChange={(e) => setFssai(e.target.value)}
                 placeholder="e.g. 12723009000166"
               />
+            </div>
+          </div>
+
+          {/* SECTION: Thermal Receipt & Printer Settings */}
+          <div style={{ background: 'var(--panel-2, #1e293b)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+              🖨️ Thermal Receipt & Printer
+            </div>
+
+            <div className="field">
+              <label style={{ marginBottom: 6, display: 'block' }}>Printer Paper Roll Width</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaperWidth('58mm');
+                    localStorage.setItem('billkaro_printer_paper_width', '58mm');
+                  }}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: paperWidth === '58mm' ? '2px solid #f59e0b' : '1px solid var(--border)',
+                    background: paperWidth === '58mm' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg, #0f172a)',
+                    color: paperWidth === '58mm' ? '#fbbf24' : '#cbd5e1',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>58mm (2-inch)</span>
+                    {paperWidth === '58mm' && <span>✓</span>}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: 2, fontWeight: 400 }}>
+                    Nirvana, Everycom, POS-58
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaperWidth('80mm');
+                    localStorage.setItem('billkaro_printer_paper_width', '80mm');
+                  }}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: paperWidth === '80mm' ? '2px solid #f59e0b' : '1px solid var(--border)',
+                    background: paperWidth === '80mm' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg, #0f172a)',
+                    color: paperWidth === '80mm' ? '#fbbf24' : '#cbd5e1',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>80mm (3-inch)</span>
+                    {paperWidth === '80mm' && <span>✓</span>}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: 2, fontWeight: 400 }}>
+                    Epson, TVS, Citizen
+                  </div>
+                </button>
+              </div>
             </div>
           </div>
 
