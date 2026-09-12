@@ -5,6 +5,8 @@ interface Props {
   bill: Bill;
   user: User;
   invoiceNumber?: string;
+  customerName?: string;
+  customerPhone?: string;
   items?: Item[];
   subtotal: number;
   tax: number;
@@ -21,6 +23,8 @@ export async function printBill({
   bill,
   user,
   invoiceNumber,
+  customerName,
+  customerPhone,
   items,
   subtotal,
   tax,
@@ -45,10 +49,16 @@ export async function printBill({
   const is58mm = paperWidth === '58mm';
 
   // Generate UPI QR code for print if store has a UPI ID configured and QR printing is enabled
+  // When paying via Cash or Udhaar: DO NOT print QR code to save paper!
+  // When Split payment: print QR with the exact split UPI amount!
   const printQrEnabled = (typeof window !== 'undefined' && localStorage.getItem('billkaro_print_qr_enabled')) !== 'false';
   let qrDataUrl = '';
+  const isCashOnly = paymentMethod === 'cash';
+  const isUdhaar = paymentMethod === 'udhaar';
+  const hasUpiPay = (paymentMethod === 'split') ? (upiAmount != null && upiAmount > 0) : (!isCashOnly && !isUdhaar);
   const qrAmount = (paymentMethod === 'split' && upiAmount != null && upiAmount > 0) ? upiAmount : total;
-  if (printQrEnabled && user?.upiId && qrAmount > 0) {
+
+  if (printQrEnabled && user?.upiId && hasUpiPay && qrAmount > 0) {
     const upiLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${qrAmount.toFixed(2)}&cu=INR`;
     try {
       // Size QR code to whole printer dots (~110px for 58mm / 384-dot printable width to avoid fractional-dot smearing)
@@ -262,6 +272,16 @@ export async function printBill({
     <span>${dateStr} &nbsp; ${timeStr}</span>
     <span><strong>${escHtml(billLabelDisplay)}</strong></span>
   </div>
+  ${customerName ? `
+  <div class="meta">
+    <span>Customer: <strong>${escHtml(customerName)}</strong></span>
+    ${customerPhone ? `<span>Mob: ${escHtml(customerPhone)}</span>` : '<span></span>'}
+  </div>` : ''}
+  ${isUdhaar ? `
+  <div class="meta">
+    <span>Payment Mode:</span>
+    <span><strong>UDHAAR (CREDIT)</strong></span>
+  </div>` : ''}
 
   <hr class="divider" />
 
@@ -305,7 +325,7 @@ export async function printBill({
   ${qrDataUrl ? `
   <hr class="divider" />
   <div class="qr-block">
-    <div class="qr-title">SCAN TO PAY</div>
+    <div class="qr-title">${paymentMethod === 'split' ? `SCAN TO PAY (UPI: ₹${qrAmount.toFixed(2)})` : 'SCAN TO PAY'}</div>
     <img src="${qrDataUrl}" alt="UPI QR Code" class="qr-img" />
   </div>
   ` : ''}

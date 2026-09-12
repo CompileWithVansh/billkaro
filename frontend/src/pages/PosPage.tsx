@@ -827,6 +827,8 @@ export default function PosPage() {
         const printParams = {
           bill: { ...activeBill, savedBillId, label: `Bill No: ${invNumber}` },
           invoiceNumber: invNumber,
+          customerName: details.customerName,
+          customerPhone: details.customerPhone,
           user,
           items,
           subtotal,

@@ -370,6 +370,150 @@ class EscPosBuilder {
     return this;
   }
 
+  // High-Resolution 1-bit Monochrome Raster Header for Store Name
+  // Prints crystal clear like the QR code, eliminating printer ROM font blur & firmware splitting lines
+  rasterStoreHeader(storeName: string): this {
+    try {
+      if (typeof document === 'undefined') {
+        this.alignCenter().bold(true).line(storeName).bold(false);
+        return this;
+      }
+
+      const cleanName = storeName.trim().toUpperCase();
+      if (!cleanName) return this;
+
+      const paperWidth = (typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_printer_paper_width') : null) || '58mm';
+      const maxDots = paperWidth === '80mm' ? 576 : 384;
+      const maxPrintWidth = maxDots - 24; // 12-dot padding on each side
+
+      const testCanvas = document.createElement('canvas');
+      const testCtx = testCanvas.getContext('2d');
+      if (!testCtx) {
+        this.alignCenter().bold(true).line(cleanName).bold(false);
+        return this;
+      }
+
+      let fontSize = 28;
+      testCtx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif`;
+      let textWidth = testCtx.measureText(cleanName).width;
+
+      let lines: string[] = [];
+      if (textWidth <= maxPrintWidth) {
+        lines = [cleanName];
+      } else {
+        testCtx.font = `bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif`;
+        if (testCtx.measureText(cleanName).width <= maxPrintWidth) {
+          fontSize = 24;
+          lines = [cleanName];
+        } else {
+          fontSize = 24;
+          const words = cleanName.split(' ');
+          let l1 = '';
+          let l2 = '';
+          for (const w of words) {
+            const testL1 = (l1 ? l1 + ' ' : '') + w;
+            testCtx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif`;
+            if (testCtx.measureText(testL1).width <= maxPrintWidth && !l2) {
+              l1 = testL1;
+            } else {
+              l2 = (l2 ? l2 + ' ' : '') + w;
+            }
+          }
+          lines = l2 ? [l1, l2] : [cleanName];
+        }
+      }
+
+      const canvasHeight = lines.length === 1 ? 44 : 76;
+      const canvas = document.createElement('canvas');
+      canvas.width = maxDots;
+      canvas.height = canvasHeight;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) {
+        this.alignCenter().bold(true).line(cleanName).bold(false);
+        return this;
+      }
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, maxDots, canvasHeight);
+
+      ctx.fillStyle = '#000000';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif`;
+
+      if (lines.length === 1) {
+        ctx.fillText(lines[0], maxDots / 2, Math.floor(canvasHeight / 2));
+      } else {
+        ctx.fillText(lines[0], maxDots / 2, Math.floor(canvasHeight * 0.3));
+        ctx.fillText(lines[1], maxDots / 2, Math.floor(canvasHeight * 0.74));
+      }
+
+      const imgData = ctx.getImageData(0, 0, maxDots, canvasHeight);
+      const pixels = imgData.data;
+
+      let yMin = -1;
+      let yMax = -1;
+      for (let y = 0; y < canvasHeight; y++) {
+        let hasBlack = false;
+        for (let x = 0; x < maxDots; x++) {
+          const idx = (y * maxDots + x) * 4;
+          const r = pixels[idx];
+          const g = pixels[idx + 1];
+          const b = pixels[idx + 2];
+          const a = pixels[idx + 3];
+          if (a > 100 && (r * 0.299 + g * 0.587 + b * 0.114) < 160) {
+            hasBlack = true;
+            break;
+          }
+        }
+        if (hasBlack) {
+          if (yMin === -1) yMin = y;
+          yMax = y;
+        }
+      }
+
+      if (yMin === -1 || yMax === -1) {
+        this.alignCenter().bold(true).line(cleanName).bold(false);
+        return this;
+      }
+
+      const startY = Math.max(0, yMin - 1);
+      const endY = Math.min(canvasHeight - 1, yMax + 1);
+      const actualHeight = endY - startY + 1;
+      const bytesPerLine = Math.floor(maxDots / 8);
+
+      this.alignLeft();
+      this.buffer.push(0x1d, 0x76, 0x30, 0x00);
+      this.buffer.push(bytesPerLine & 0xff, (bytesPerLine >> 8) & 0xff);
+      this.buffer.push(actualHeight & 0xff, (actualHeight >> 8) & 0xff);
+
+      for (let y = startY; y <= endY; y++) {
+        for (let xByte = 0; xByte < bytesPerLine; xByte++) {
+          let byteVal = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            const xDot = xByte * 8 + bit;
+            const idx = (y * maxDots + xDot) * 4;
+            const r = pixels[idx];
+            const g = pixels[idx + 1];
+            const b = pixels[idx + 2];
+            const a = pixels[idx + 3];
+            const isBlack = a > 100 && (r * 0.299 + g * 0.587 + b * 0.114) < 160;
+            if (isBlack) {
+              byteVal |= (1 << (7 - bit));
+            }
+          }
+          this.buffer.push(byteVal);
+        }
+      }
+
+      this.alignCenter();
+    } catch (err) {
+      console.warn('Failed to rasterize store header, falling back to text:', err);
+      this.alignCenter().bold(true).line(storeName).bold(false);
+    }
+    return this;
+  }
+
   feed(lines: number = 3): this {
     for (let i = 0; i < lines; i++) {
       this.buffer.push(0x0a);
@@ -424,6 +568,8 @@ interface PrintReceiptParams {
   bill: Bill;
   user: User;
   invoiceNumber?: string;
+  customerName?: string;
+  customerPhone?: string;
   items?: Item[];
   subtotal: number;
   tax: number;
@@ -443,41 +589,17 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
     return { success: false, error: 'Printer not connected. Please ensure PSF588 is turned on and paired.' };
   }
 
-  const { bill, user, items, subtotal, tax, total, discountAmount, discountValue, discountType, paymentMethod, upiAmount, invoiceNumber } = params;
+  const { bill, user, items, subtotal, tax, total, discountAmount, discountValue, discountType, paymentMethod, upiAmount, invoiceNumber, customerName } = params;
 
   try {
     const builder = new EscPosBuilder();
 
-    // 1. Feed 1 line at the top so the tear bar does NOT cut off the top of the restaurant name!
-    builder.feed(1);
-
-    // 2. Store Name & Info Header (Bold, Centered)
+    // 1. Crystal-Clear Raster Store Header (No feed, no ROM blur, no horizontal splitting line, zero wasted paper)
     const storeName = (user.storeName || 'RESTAURANT').trim().toUpperCase();
+    builder.rasterStoreHeader(storeName);
+
     builder
       .alignCenter()
-      .doubleHeight(true)
-      .bold(true);
-
-    if (storeName.length <= 26) {
-      builder.line(storeName);
-    } else {
-      // Split into 2 centered lines by words so long names never get clipped on the edges
-      const words = storeName.split(' ');
-      let line1 = '';
-      let line2 = '';
-      for (const w of words) {
-        if ((line1 + ' ' + w).trim().length <= 26) {
-          line1 = (line1 + ' ' + w).trim();
-        } else {
-          line2 = (line2 + ' ' + w).trim();
-        }
-      }
-      builder.line(line1);
-      if (line2) builder.line(line2);
-    }
-
-    builder
-      .doubleHeight(false)
       .bold(false);
 
     if (user.address) builder.line(user.address);
@@ -500,6 +622,15 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
 
     if (bill.label && !bill.label.toLowerCase().startsWith('bill') && !bill.label.toLowerCase().startsWith('inv-')) {
       builder.twoCol('Table / Order:', bill.label.slice(0, 16));
+    }
+
+    // Customer Name & Udhaar credit details
+    const cust = (customerName || '').trim();
+    if (cust) {
+      builder.twoCol('Customer:', cust.slice(0, 20));
+    }
+    if (paymentMethod === 'udhaar') {
+      builder.twoCol('Payment Mode:', 'UDHAAR (CREDIT)');
     }
 
     builder
@@ -541,21 +672,27 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
 
     builder
       .bold(true)
-      .doubleHeight(true)
       .twoCol('TOTAL:', `Rs ${total.toFixed(2)}`)
-      .doubleHeight(false)
       .bold(false);
 
-    // Dynamic UPI QR code (compact, zero wasted lines)
+    // Dynamic UPI QR code:
+    // When paying via Cash or Udhaar: DO NOT print QR code to save paper!
+    // When Split payment: print QR with the exact split UPI amount!
+    // When UPI / default: print QR with total bill amount.
     const printQrEnabled = (typeof window !== 'undefined' && localStorage.getItem('billkaro_print_qr_enabled')) !== 'false';
+    const isCashOnly = paymentMethod === 'cash';
+    const isUdhaar = paymentMethod === 'udhaar';
+    const hasUpiPay = (paymentMethod === 'split') ? (upiAmount != null && upiAmount > 0) : (!isCashOnly && !isUdhaar);
     const qrAmount = (paymentMethod === 'split' && upiAmount != null && upiAmount > 0) ? upiAmount : total;
-    if (printQrEnabled && user.upiId && qrAmount > 0) {
-      const upiLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${qrAmount.toFixed(2)}&cu=INR`;
+
+    const shouldPrintQr = printQrEnabled && Boolean(user.upiId) && hasUpiPay && qrAmount > 0;
+    if (shouldPrintQr) {
+      const upiLink = `upi://pay?pa=${encodeURIComponent(user.upiId!)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${qrAmount.toFixed(2)}&cu=INR`;
       builder
         .divider('-')
         .alignCenter()
         .bold(true)
-        .line('SCAN TO PAY')
+        .line(paymentMethod === 'split' ? `SCAN TO PAY (UPI: Rs ${qrAmount.toFixed(2)})` : 'SCAN TO PAY')
         .bold(false)
         .rasterQrCode(upiLink);
     }
@@ -565,7 +702,7 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
       .alignCenter()
       .line('Thanks & Visit Again!')
       .line('Powered by BillKaro')
-      .feed(printQrEnabled ? 3 : 2); // Reduced feed when QR is disabled to save maximum paper roll
+      .feed(shouldPrintQr ? 3 : 2); // Reduced feed when QR is suppressed to save maximum paper roll
 
     await sendEscPosBytes(builder.getBytes());
     return { success: true };
