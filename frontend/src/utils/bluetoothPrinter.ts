@@ -338,10 +338,10 @@ class EscPosBuilder {
   }
 }
 
-// Print a quick test receipt to verify SC588 connection
+// Print a quick test receipt to verify connection
 export async function printTestReceipt(): Promise<{ success: boolean; error?: string }> {
   if (!isPrinterConnected()) {
-    return { success: false, error: 'No printer connected. Please pair with SC588 first.' };
+    return { success: false, error: 'No printer connected. Please pair with PSF588 / SC588 first.' };
   }
 
   try {
@@ -356,7 +356,7 @@ export async function printTestReceipt(): Promise<{ success: boolean; error?: st
       .line('Bluetooth Thermal Test')
       .divider('=')
       .alignLeft()
-      .twoCol('Device:', getConnectedDeviceName() || 'SC588')
+      .twoCol('Device:', getConnectedDeviceName() || 'PSF588')
       .twoCol('Status:', 'CONNECTED [OK]')
       .twoCol('Width:', '58mm (32 Col)')
       .twoCol('Time:', new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }))
@@ -366,7 +366,7 @@ export async function printTestReceipt(): Promise<{ success: boolean; error?: st
       .line('READY FOR HIGH-SPEED BILLING!')
       .bold(false)
       .line('Zero App Switching')
-      .feed(4);
+      .feed(3);
 
     await sendEscPosBytes(builder.getBytes());
     return { success: true };
@@ -395,7 +395,7 @@ interface PrintReceiptParams {
 export async function printDirectBluetoothReceipt(params: PrintReceiptParams): Promise<{ success: boolean; error?: string }> {
   const isConnected = await ensurePrinterConnected();
   if (!isConnected) {
-    return { success: false, error: 'Printer not connected. Please turn on SC588.' };
+    return { success: false, error: 'Printer not connected. Please ensure PSF588 is turned on and paired.' };
   }
 
   const { bill, user, items, subtotal, tax, total, discountAmount, discountValue, discountType, paymentMethod, upiAmount } = params;
@@ -470,9 +470,10 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
       .doubleHeight(false)
       .bold(false);
 
-    // Dynamic UPI details (clean compatible text)
+    // Dynamic UPI details (clean compatible text) - only if enabled in store settings
+    const printQrEnabled = (typeof window !== 'undefined' && localStorage.getItem('billkaro_print_qr_enabled')) !== 'false';
     const qrAmount = (paymentMethod === 'split' && upiAmount != null && upiAmount > 0) ? upiAmount : total;
-    if (user.upiId && qrAmount > 0) {
+    if (printQrEnabled && user.upiId && qrAmount > 0) {
       builder
         .divider('-')
         .alignCenter()
@@ -490,7 +491,7 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
       .alignCenter()
       .line('Thanks & Visit Again!')
       .line('Powered by BillKaro')
-      .feed(4); // Feed paper out past tear bar
+      .feed(printQrEnabled ? 3 : 2); // Reduced feed when QR is disabled to save maximum paper roll
 
     await sendEscPosBytes(builder.getBytes());
     return { success: true };

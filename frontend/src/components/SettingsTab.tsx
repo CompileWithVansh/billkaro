@@ -19,6 +19,9 @@ export default function SettingsTab() {
   const [paperWidth, setPaperWidth] = useState<string>(
     () => localStorage.getItem('billkaro_printer_paper_width') || '58mm'
   );
+  const [printQr, setPrintQr] = useState<boolean>(
+    () => (typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_print_qr_enabled') : null) !== 'false'
+  );
   const [busy, setBusy] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
   const [error, setError] = useState('');
@@ -108,6 +111,7 @@ export default function SettingsTab() {
       });
       updateUser(res.data.user);
       localStorage.setItem('billkaro_printer_paper_width', paperWidth);
+      localStorage.setItem('billkaro_print_qr_enabled', String(printQr));
       setUpiPassword('');
       setSavedToast(true);
       setTimeout(() => setSavedToast(false), 3000);
@@ -259,7 +263,7 @@ export default function SettingsTab() {
                   {paperWidth === '58mm' && <span>✓</span>}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 4, fontWeight: 400 }}>
-                  Nirvana, Everycom, NGX, POS-58 (Standard Indian counter printers)
+                  PSF588, SC588, Nirvana, Everycom, POS-58
                 </div>
               </button>
 
@@ -291,8 +295,57 @@ export default function SettingsTab() {
               </button>
             </div>
             <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 6, display: 'block' }}>
-              Selected width formats print margins and QR code size natively with zero downscale blur.
+              Selected width formats print margins and columns natively with zero downscale blur.
             </span>
+          </div>
+
+          {/* Toggle: Print UPI QR Code on Receipts */}
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc' }}>
+                  Print UPI Payment QR Code
+                </div>
+                <div style={{ fontSize: '0.72rem', color: printQr ? '#94a3b8' : '#34d399', marginTop: 2 }}>
+                  {printQr
+                    ? 'QR Code will be printed on bills (scannable with GPay, PhonePe, Paytm).'
+                    : '🟢 QR Code is OFF — Saves 2–3 cm paper per receipt to save paper roll!'}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !printQr;
+                  setPrintQr(next);
+                  localStorage.setItem('billkaro_print_qr_enabled', String(next));
+                }}
+                style={{
+                  width: 50,
+                  height: 28,
+                  borderRadius: 14,
+                  background: printQr ? '#10b981' : '#475569',
+                  border: 'none',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'background 0.2s',
+                  flexShrink: 0,
+                  padding: 2,
+                }}
+                aria-label="Toggle Print QR Code"
+              >
+                <div
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    background: '#ffffff',
+                    transform: printQr ? 'translateX(22px)' : 'translateX(0px)',
+                    transition: 'transform 0.2s',
+                  }}
+                />
+              </button>
+            </div>
           </div>
         </div>
 

@@ -834,7 +834,7 @@ export default function PosPage() {
           try {
             const btRes = await printDirectBluetoothReceipt(printParams);
             if (btRes.success) {
-              alert(`✅ Bill ${invNumber} printed on ${getConnectedDeviceName() || 'SC588'}!`);
+              alert(`✅ Bill ${invNumber} printed on ${getConnectedDeviceName() || 'PSF588'}!`);
               clearActiveBill();
               setShowPayment(false);
               return;
@@ -864,7 +864,7 @@ export default function PosPage() {
               if (connRes.success) {
                 const btRes = await printDirectBluetoothReceipt(printParams);
                 if (btRes.success) {
-                  alert(`✅ Bill ${invNumber} printed on ${connRes.deviceName || 'SC588'}!`);
+                  alert(`✅ Bill ${invNumber} printed on ${connRes.deviceName || 'PSF588'}!`);
                   clearActiveBill();
                   setShowPayment(false);
                   return;

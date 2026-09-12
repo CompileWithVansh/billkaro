@@ -35,8 +35,8 @@ export default function ConnectPrinterModal({ onClose }: Props) {
       const res = await connectPrinter();
       if (res.success) {
         setConnected(true);
-        setDeviceName(res.deviceName || 'SC588');
-        setSuccessMsg(`✅ Successfully connected to ${res.deviceName || 'SC588'}!`);
+        setDeviceName(res.deviceName || 'PSF588');
+        setSuccessMsg(`✅ Successfully connected to ${res.deviceName || 'PSF588'}!`);
       } else if (res.error) {
         setError(res.error);
       }
@@ -62,7 +62,7 @@ export default function ConnectPrinterModal({ onClose }: Props) {
     try {
       const res = await printTestReceipt();
       if (res.success) {
-        setSuccessMsg('🎉 Test receipt printed on SC588!');
+        setSuccessMsg(`🎉 Test receipt printed on ${deviceName || 'PSF588'}!`);
         setTimeout(() => setSuccessMsg(''), 3500);
       } else if (res.error) {
         setError(res.error);
@@ -121,14 +121,14 @@ export default function ConnectPrinterModal({ onClose }: Props) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, margin: '10px 0' }}>
             <span style={{ fontSize: '1.4rem' }}>{connected ? '🟢' : '⚪'}</span>
             <span style={{ fontSize: '1.2rem', fontWeight: 800, color: connected ? '#34d399' : '#94a3b8' }}>
-              {connected ? `${deviceName || 'SC588'} Connected` : 'Not Connected'}
+              {connected ? `${deviceName || 'PSF588'} Connected` : 'Not Connected'}
             </span>
           </div>
 
           <div style={{ fontSize: '0.78rem', color: '#cbd5e1' }}>
             {connected
               ? 'Receipts will print directly in 0.1s without switching apps or opening print previews.'
-              : 'Connect your SC588 printer to enable ultra-fast, zero-app-switch thermal billing.'}
+              : 'Connect your PSF588 / SC588 printer to enable ultra-fast, zero-app-switch thermal billing.'}
           </div>
 
           {connected && (
@@ -189,9 +189,9 @@ export default function ConnectPrinterModal({ onClose }: Props) {
             💡 Quick Setup Guide:
           </div>
           <ol style={{ margin: 0, paddingLeft: 18, fontSize: '0.74rem', color: '#94a3b8', lineHeight: 1.5 }}>
-            <li>Turn on your <strong>SC588 printer</strong> (Power light ON).</li>
+            <li>Turn on your <strong>thermal printer</strong> (Power light ON).</li>
             <li>Make sure <strong>Bluetooth</strong> is turned ON on your phone/PC.</li>
-            <li>Tap <strong>Scan & Connect Printer</strong> and choose <strong>SC588</strong> from the list.</li>
+            <li>Tap <strong>Scan & Connect Printer</strong> and choose <strong>PSF588</strong> from the list.</li>
             <li>Tap <strong>Print Test Receipt</strong> to verify paper feed!</li>
           </ol>
         </div>

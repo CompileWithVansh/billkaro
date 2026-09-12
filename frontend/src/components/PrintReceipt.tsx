@@ -42,10 +42,11 @@ export async function printBill({
   const paperWidth = (typeof window !== 'undefined' && localStorage.getItem('billkaro_printer_paper_width')) || '58mm';
   const is58mm = paperWidth === '58mm';
 
-  // Generate UPI QR code for print if store has a UPI ID configured
+  // Generate UPI QR code for print if store has a UPI ID configured and QR printing is enabled
+  const printQrEnabled = (typeof window !== 'undefined' && localStorage.getItem('billkaro_print_qr_enabled')) !== 'false';
   let qrDataUrl = '';
   const qrAmount = (paymentMethod === 'split' && upiAmount != null && upiAmount > 0) ? upiAmount : total;
-  if (user?.upiId && qrAmount > 0) {
+  if (printQrEnabled && user?.upiId && qrAmount > 0) {
     const upiLink = `upi://pay?pa=${encodeURIComponent(user.upiId)}&pn=${encodeURIComponent(user.payeeName || user.storeName)}&am=${qrAmount.toFixed(2)}&cu=INR`;
     try {
       // Size QR code to whole printer dots (~110px for 58mm / 384-dot printable width to avoid fractional-dot smearing)
