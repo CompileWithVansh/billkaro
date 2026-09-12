@@ -847,16 +847,13 @@ export default function PosPage() {
             try {
               const btRes = await printDirectBluetoothReceipt(printParams);
               if (btRes.success) {
-                // Instant smooth success during rush hours - zero blocking popups!
                 showPosToast(`✅ Bill ${invNumber} printed on ${getConnectedDeviceName() || 'PSF588'}!`, 'success');
-                clearActiveBill();
                 setShowPayment(false);
                 return;
               } else {
                 console.warn('Bluetooth print failed:', btRes.error);
                 showPosToast(`⚠️ Bluetooth printer: ${btRes.error || 'Check printer'}. Opening print dialog...`, 'warning');
                 await printBill(printParams);
-                clearActiveBill();
                 setShowPayment(false);
                 return;
               }
@@ -864,7 +861,6 @@ export default function PosPage() {
               console.warn('Bluetooth print error:', err);
               showPosToast('⚠️ Bluetooth error. Opening browser print...', 'warning');
               await printBill(printParams);
-              clearActiveBill();
               setShowPayment(false);
               return;
             }
@@ -873,7 +869,6 @@ export default function PosPage() {
             // Fallback directly to browser print without any blocking confirm dialog!
             showPosToast('🖨️ Printer disconnected. Opening standard print...', 'info');
             await printBill(printParams);
-            clearActiveBill();
             setShowPayment(false);
             return;
           }
@@ -881,7 +876,6 @@ export default function PosPage() {
           // Bluetooth printer is turned OFF (or not supported)
           // Directly open browser print with ZERO popups and ZERO Bluetooth searches!
           await printBill(printParams);
-          clearActiveBill();
           setShowPayment(false);
         }
       } else if (details.action === 'whatsapp') {
