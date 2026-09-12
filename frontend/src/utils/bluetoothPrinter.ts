@@ -200,13 +200,14 @@ export async function connectPrinter(): Promise<{ success: boolean; deviceName?:
   }
 }
 
-// Low-level helper to write data chunks safely across BLE MTU limits (typically 20-60 bytes)
+// Low-level helper to write data chunks safely across BLE MTU limits
 async function sendEscPosBytes(bytes: Uint8Array): Promise<void> {
   if (!activeCharacteristic) {
     throw new Error('No Bluetooth printer connected.');
   }
 
-  const CHUNK_SIZE = 30; // Very safe BLE payload size for all 58mm printer microcontrollers
+  // 60-byte chunks with 8ms pause: 4x faster transmission while staying safely within BLE MTU & printer buffer
+  const CHUNK_SIZE = 60;
   for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
     const chunk = bytes.slice(i, i + CHUNK_SIZE);
     if (activeCharacteristic.properties.writeWithoutResponse) {
@@ -214,8 +215,7 @@ async function sendEscPosBytes(bytes: Uint8Array): Promise<void> {
     } else {
       await activeCharacteristic.writeValue(chunk);
     }
-    // Small 20ms pause between packets to give thermal printhead microcontroller time to buffer
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 8));
   }
 }
 
@@ -312,19 +312,27 @@ class EscPosBuilder {
   // Universal ESC/POS Raster Bit-Image QR Code - 100% supported by PSF588, SC588 & all thermal printers
   rasterQrCode(text: string): this {
     try {
-      const qr = QRCode.create(text, { errorCorrectionLevel: 'M' });
+      // Use Error Correction Level 'L' (7%) for clean, chunky modules and instant scanning
+      const qr = QRCode.create(text, { errorCorrectionLevel: 'L' });
       const modCount = qr.modules.size;
-      const scale = 3; // 3 dots per module (ideal size on 58mm: ~105 dots wide)
-      const quiet = 2; // 2 modules quiet zone
+      const scale = 4; // Compact 4 dots per module (~1.5 cm) - maximum paper saving & fast print
+      const quiet = 1; // 1 module quiet zone
       const totalModules = modCount + quiet * 2;
       const widthDots = totalModules * scale;
       const heightDots = widthDots;
       const bytesPerLine = Math.ceil(widthDots / 8);
 
-      // Center the QR image on 384-dot 58mm paper
-      const leftPaddingDots = Math.max(0, Math.floor((384 - widthDots) / 2));
+      // Determine paper width (58mm = 384 dots, 80mm = 576 dots)
+      const paperWidth = (typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_printer_paper_width') : null) || '58mm';
+      const maxDots = paperWidth === '80mm' ? 576 : 384;
+
+      // Calculate horizontal centering offset from left margin
+      const leftPaddingDots = Math.max(0, Math.floor((maxDots - widthDots) / 2));
       const leftPaddingBytes = Math.floor(leftPaddingDots / 8);
       const totalBytesPerLine = leftPaddingBytes + bytesPerLine;
+
+      // CRITICAL: Reset alignment to Left before raster image so printer does not double-shift the bitmap
+      this.alignLeft();
 
       // GS v 0 0 xL xH yL yH (Standard ESC/POS raster bit image)
       this.buffer.push(0x1d, 0x76, 0x30, 0x00);
@@ -334,7 +342,7 @@ class EscPosBuilder {
       for (let y = 0; y < heightDots; y++) {
         const modY = Math.floor(y / scale) - quiet;
 
-        // Left padding for center alignment
+        // Left padding for perfect horizontal center alignment
         for (let b = 0; b < leftPaddingBytes; b++) {
           this.buffer.push(0x00);
         }
@@ -353,6 +361,9 @@ class EscPosBuilder {
           this.buffer.push(byteVal);
         }
       }
+
+      // Restore center alignment for footer text
+      this.alignCenter();
     } catch (err) {
       console.warn('Failed to build raster QR code:', err);
     }
@@ -460,7 +471,6 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
       : (bill.id ? `INV-${String(bill.id).slice(-4)}` : 'INV-0001');
 
     builder
-      .divider('-')
       .twoCol(dateStr, timeStr)
       .twoCol('Bill No:', invNumber);
 
@@ -469,7 +479,6 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
     }
 
     builder
-      .divider('-')
       .alignLeft()
       .bold(true)
       .line('Item           Qty  Rate     Amt')
@@ -507,7 +516,6 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
     }
 
     builder
-      .divider('=')
       .bold(true)
       .doubleHeight(true)
       .twoCol('TOTAL:', `Rs ${total.toFixed(2)}`)
@@ -530,7 +538,6 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
 
     // Footer
     builder
-      .divider('-')
       .alignCenter()
       .line('Thanks & Visit Again!')
       .line('Powered by BillKaro')
