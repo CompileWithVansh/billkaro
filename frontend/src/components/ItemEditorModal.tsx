@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Item } from '../types';
-import { ITEM_COLORS } from '../colors';
+import { ITEM_COLORS, CLASSIC_ITEM_COLORS, EXTENDED_ITEM_COLORS } from '../colors';
 
 interface Props {
   initial?: Item | null;
@@ -22,7 +22,8 @@ export default function ItemEditorModal({
 }: Props) {
   const [name, setName] = useState(initial?.name ?? '');
   const [price, setPrice] = useState(initial ? String(initial.price) : '');
-  const [color, setColor] = useState(initial?.color ?? suggestedColor ?? ITEM_COLORS[0]);
+  const [color, setColor] = useState(initial?.color ?? suggestedColor ?? CLASSIC_ITEM_COLORS[0]);
+  const [showAllColors, setShowAllColors] = useState(() => EXTENDED_ITEM_COLORS.includes(initial?.color ?? ''));
   const [category, setCategory] = useState(initial?.category ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [stockQuantity, setStockQuantity] = useState(initial?.stockQuantity !== null && initial?.stockQuantity !== undefined ? String(initial.stockQuantity) : '');
@@ -138,9 +139,44 @@ export default function ItemEditorModal({
         </div>
 
         <div className="field">
-          <label>Button color</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <label style={{ margin: 0 }}>
+              Button color {showAllColors ? `(30)` : `(12)`}
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: 18,
+                  height: 18,
+                  borderRadius: 4,
+                  background: color,
+                  border: '1.5px solid #ffffff',
+                  boxShadow: '0 0 4px rgba(0,0,0,0.5)',
+                }}
+                title="Current color preview"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAllColors((v) => !v)}
+                style={{
+                  background: 'rgba(56, 189, 248, 0.1)',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                  color: '#38bdf8',
+                  fontSize: '0.74rem',
+                  cursor: 'pointer',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  fontWeight: 600,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {showAllColors ? '▴ Standard (12)' : `+ More Colors (${EXTENDED_ITEM_COLORS.length}) ▾`}
+              </button>
+            </div>
+          </div>
           <div className="color-row">
-            {ITEM_COLORS.map((c) => (
+            {(showAllColors ? ITEM_COLORS : CLASSIC_ITEM_COLORS).map((c) => (
               <button
                 key={c}
                 type="button"
