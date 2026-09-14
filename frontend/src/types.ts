@@ -36,9 +36,28 @@ export interface CartLine {
   description?: string;    // item description shown on receipt / WhatsApp
 }
 
-export function getItemDesc(line: { description?: string; category?: string }): string {
-  const desc = line.description?.trim();
-  const cat = line.category?.trim();
+export function getItemDesc(
+  line: { description?: string; category?: string },
+  options?: { showCategory?: boolean; showDescription?: boolean }
+): string {
+  // Configurable receipt item text: Category is OFF by default to keep bills short
+  let showCat = options?.showCategory;
+  if (showCat === undefined && typeof localStorage !== 'undefined') {
+    showCat = localStorage.getItem('billkaro_print_category_enabled') === 'true';
+  } else if (showCat === undefined) {
+    showCat = false;
+  }
+
+  let showDesc = options?.showDescription;
+  if (showDesc === undefined && typeof localStorage !== 'undefined') {
+    showDesc = localStorage.getItem('billkaro_print_description_enabled') !== 'false';
+  } else if (showDesc === undefined) {
+    showDesc = true;
+  }
+
+  const desc = showDesc ? (line.description?.trim() || '') : '';
+  const cat = showCat ? (line.category?.trim() || '') : '';
+
   if (desc && cat && desc.toLowerCase() !== cat.toLowerCase()) {
     return `${cat} • ${desc}`;
   }

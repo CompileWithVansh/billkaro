@@ -76,6 +76,15 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
     >
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: '20px', borderBottom: '2px dashed #cbd5e1', paddingBottom: '16px' }}>
+        {typeof window !== 'undefined' && localStorage.getItem('billkaro_print_logo_enabled') === 'true' && localStorage.getItem('billkaro_store_logo') && (
+          <div style={{ marginBottom: '8px' }}>
+            <img
+              src={localStorage.getItem('billkaro_store_logo') || ''}
+              alt="Logo"
+              style={{ maxHeight: '55px', maxWidth: '160px', objectFit: 'contain' }}
+            />
+          </div>
+        )}
         <h2 style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: '800', color: '#1e293b' }}>
           {user.storeName || 'BillKaro POS'}
         </h2>

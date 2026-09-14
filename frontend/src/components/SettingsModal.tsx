@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import ConnectPrinterModal from './ConnectPrinterModal';
@@ -34,6 +34,70 @@ export default function SettingsModal({ onClose }: Props) {
     if (val !== null) return val === 'true';
     return Boolean(localStorage.getItem('billkaro_bt_printer_name'));
   });
+
+  // Receipt Layout & Logo customization
+  const [printCategory, setPrintCategory] = useState<boolean>(() => {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_print_category_enabled') === 'true' : false;
+  });
+  const [printDescription, setPrintDescription] = useState<boolean>(() => {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_print_description_enabled') !== 'false' : true;
+  });
+  const [printLogo, setPrintLogo] = useState<boolean>(() => {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_print_logo_enabled') === 'true' : false;
+  });
+  const [storeLogo, setStoreLogo] = useState<string>(() => {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_store_logo') || '' : '';
+  });
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Please upload a valid image file (PNG, JPG, WebP).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_W = 320;
+        const MAX_H = 140;
+        let w = img.width;
+        let h = img.height;
+        if (w > MAX_W) {
+          h = Math.round((h * MAX_W) / w);
+          w = MAX_W;
+        }
+        if (h > MAX_H) {
+          w = Math.round((w * MAX_H) / h);
+          h = MAX_H;
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL('image/png');
+          setStoreLogo(compressed);
+          localStorage.setItem('billkaro_store_logo', compressed);
+          setPrintLogo(true);
+          localStorage.setItem('billkaro_print_logo_enabled', 'true');
+        }
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleRemoveLogo() {
+    setStoreLogo('');
+    localStorage.removeItem('billkaro_store_logo');
+    setPrintLogo(false);
+    localStorage.setItem('billkaro_print_logo_enabled', 'false');
+  }
+
   const [profileExpanded, setProfileExpanded] = useState<boolean>(false);
   const [thermalExpanded, setThermalExpanded] = useState<boolean>(false);
   const [paymentExpanded, setPaymentExpanded] = useState<boolean>(false);
@@ -452,6 +516,204 @@ export default function SettingsModal({ onClose }: Props) {
                         Epson, TVS, Citizen
                       </div>
                     </button>
+                  </div>
+                </div>
+
+                {/* SUBSECTION: Receipt Content & Layout */}
+                <div style={{ marginTop: 4, paddingTop: 12, borderTop: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>🧾</span> Receipt Content & Layout
+                  </div>
+
+                  {/* TOGGLE: Print Item Category */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f8fafc' }}>
+                        Print Item Category on Bill
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: printCategory ? '#38bdf8' : '#34d399', marginTop: 2 }}>
+                        {printCategory
+                          ? 'Category tag (e.g. Beverages) will be printed under each item.'
+                          : '🟢 Category is OFF — Keeps receipts short & saves thermal paper roll!'}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !printCategory;
+                        setPrintCategory(next);
+                        localStorage.setItem('billkaro_print_category_enabled', String(next));
+                      }}
+                      style={{
+                        width: 48,
+                        height: 26,
+                        borderRadius: 13,
+                        background: printCategory ? '#10b981' : '#475569',
+                        border: 'none',
+                        cursor: 'pointer',
+                        position: 'relative',
+                        transition: 'background 0.2s',
+                        flexShrink: 0,
+                        padding: 2,
+                      }}
+                      aria-label="Toggle Print Category"
+                    >
+                      <div
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: '50%',
+                          background: '#ffffff',
+                          transform: printCategory ? 'translateX(22px)' : 'translateX(0px)',
+                          transition: 'transform 0.2s',
+                        }}
+                      />
+                    </button>
+                  </div>
+
+                  {/* TOGGLE: Print Item Description */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f8fafc' }}>
+                        Print Item Description / Portion
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: printDescription ? '#38bdf8' : '#94a3b8', marginTop: 2 }}>
+                        {printDescription
+                          ? 'Portion size (e.g. Half / 500ml) or notes will be printed under item name.'
+                          : '⚪ Description is OFF — Print item name only.'}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !printDescription;
+                        setPrintDescription(next);
+                        localStorage.setItem('billkaro_print_description_enabled', String(next));
+                      }}
+                      style={{
+                        width: 48,
+                        height: 26,
+                        borderRadius: 13,
+                        background: printDescription ? '#10b981' : '#475569',
+                        border: 'none',
+                        cursor: 'pointer',
+                        position: 'relative',
+                        transition: 'background 0.2s',
+                        flexShrink: 0,
+                        padding: 2,
+                      }}
+                      aria-label="Toggle Print Description"
+                    >
+                      <div
+                        style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: '50%',
+                          background: '#ffffff',
+                          transform: printDescription ? 'translateX(22px)' : 'translateX(0px)',
+                          transition: 'transform 0.2s',
+                        }}
+                      />
+                    </button>
+                  </div>
+
+                  {/* RESTAURANT LOGO ON RECEIPTS */}
+                  <div style={{ background: 'rgba(15, 23, 42, 0.5)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>🖼️</span> Restaurant Logo on Bills
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: printLogo && storeLogo ? '#34d399' : '#94a3b8', marginTop: 2 }}>
+                          {printLogo && storeLogo
+                            ? '🟢 Logo will be printed at the top of receipts.'
+                            : '⚪ Logo printing is disabled.'}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!storeLogo}
+                        onClick={() => {
+                          const next = !printLogo;
+                          setPrintLogo(next);
+                          localStorage.setItem('billkaro_print_logo_enabled', String(next));
+                        }}
+                        style={{
+                          width: 48,
+                          height: 26,
+                          borderRadius: 13,
+                          background: printLogo && storeLogo ? '#10b981' : '#475569',
+                          border: 'none',
+                          cursor: storeLogo ? 'pointer' : 'not-allowed',
+                          opacity: storeLogo ? 1 : 0.5,
+                          position: 'relative',
+                          transition: 'background 0.2s',
+                          flexShrink: 0,
+                          padding: 2,
+                        }}
+                        aria-label="Toggle Print Logo"
+                      >
+                        <div
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: '50%',
+                            background: '#ffffff',
+                            transform: printLogo && storeLogo ? 'translateX(22px)' : 'translateX(0px)',
+                            transition: 'transform 0.2s',
+                          }}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Logo Preview and Upload Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      {storeLogo ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#ffffff', padding: '4px 8px', borderRadius: 8 }}>
+                          <img
+                            src={storeLogo}
+                            alt="Store Logo Preview"
+                            style={{ height: 36, maxWidth: 100, objectFit: 'contain' }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                          No logo uploaded yet. Upload your cafe/restaurant logo:
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn ghost sm-btn"
+                          onClick={() => logoInputRef.current?.click()}
+                          style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 5 }}
+                        >
+                          <span>📁</span> {storeLogo ? 'Change Logo' : 'Upload Logo'}
+                        </button>
+                        {storeLogo && (
+                          <button
+                            type="button"
+                            className="btn ghost sm-btn"
+                            onClick={handleRemoveLogo}
+                            style={{ fontSize: '0.75rem', padding: '4px 8px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+                          >
+                            🗑️ Remove
+                          </button>
+                        )}
+                      </div>
+
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        style={{ display: 'none' }}
+                        onChange={handleLogoUpload}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

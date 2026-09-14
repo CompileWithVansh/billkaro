@@ -663,5 +663,57 @@ test('Security Lock - UPI ID Change & Password Policy Verification', () => {
   assert.deepEqual(allowed, { ok: true });
 });
 
+test('Batch Item Verification - Efficient Single Query Price Check & Tamper Detection', () => {
+  const catalogDb = [
+    { id: 10, name: 'Paneer Butter Masala', price: 250 },
+    { id: 12, name: 'Butter Naan', price: 40 },
+    { id: 15, name: 'Sweet Lassi', price: 60 },
+  ];
 
+  const dbItemMap = new Map(catalogDb.map((i) => [i.id, i]));
 
+  const cartLines = [
+    { itemId: 10, name: 'Paneer Butter Masala', price: 250, qty: 2 },
+    { itemId: 12, name: 'Butter Naan', price: 40, qty: 5 },
+    { itemId: null, name: 'Extra Papad (Custom)', price: 15, qty: 2 },
+    { itemId: 15, name: 'Sweet Lassi', price: 5, qty: 1 }, // Tampered: ₹5 instead of ₹60
+  ];
+
+  const errors = [];
+  for (const line of cartLines) {
+    if (line.itemId) {
+      const dbItem = dbItemMap.get(Number(line.itemId));
+      if (dbItem && Math.abs(line.price - Number(dbItem.price)) > 1) {
+        errors.push(`Price mismatch for ${dbItem.name}. Expected ₹${dbItem.price}, got ₹${line.price}`);
+      }
+    }
+  }
+
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /Price mismatch for Sweet Lassi/);
+});
+
+test('DeductStock Guard - Bypasses Connection Checkout on Empty / Custom Items', () => {
+  function getLinesToDeduct(items) {
+    if (!Array.isArray(items) || items.length === 0) return [];
+    return items.filter((line) => line && line.itemId && Number(line.qty) > 0);
+  }
+
+  // Pure custom items without catalog itemId
+  const customItemsOnly = [
+    { itemId: null, name: 'Custom Catering Plate', price: 500, qty: 1 },
+    { itemId: undefined, name: 'Delivery Charge', price: 30, qty: 1 },
+  ];
+  assert.equal(getLinesToDeduct(customItemsOnly).length, 0);
+
+  // Mixed items with one catalog item
+  const mixedItems = [
+    { itemId: null, name: 'Custom Cookie', price: 20, qty: 1 },
+    { itemId: 8, name: 'Cold Drink 300ml', price: 40, qty: 2 },
+    { itemId: 9, name: 'Water Bottle', price: 20, qty: 0 }, // 0 qty ignored
+  ];
+  const lines = getLinesToDeduct(mixedItems);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].itemId, 8);
+  assert.equal(lines[0].qty, 2);
+});

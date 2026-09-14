@@ -207,6 +207,19 @@ router.post(
     }));
 
     // 1. Verify line items & prices (Catalog price lock against internal theft)
+    // Batch lookup all catalog item IDs in 1 query to prevent N+1 connection saturation
+    const itemIdsToVerify = [
+      ...new Set(
+        cleanItems
+          .filter((l) => l.itemId && Number.isInteger(Number(l.itemId)) && Number(l.itemId) > 0)
+          .map((l) => Number(l.itemId))
+      ),
+    ];
+    const dbItems = itemIdsToVerify.length > 0
+      ? await itemsRepo.findByIds(itemIdsToVerify, userId)
+      : [];
+    const dbItemMap = new Map(dbItems.map((item) => [item.id, item]));
+
     for (const line of cleanItems) {
       const linePrice = line.price;
       const lineQty = line.qty;
@@ -220,7 +233,7 @@ router.post(
 
       // If line is linked to catalog itemId, verify price matches database (1 rupee tolerance for float precision)
       if (line.itemId) {
-        const dbItem = await itemsRepo.findById(line.itemId, userId);
+        const dbItem = dbItemMap.get(Number(line.itemId));
         if (dbItem && Math.abs(linePrice - Number(dbItem.price)) > 1) {
           return res.status(400).json({
             error: `Price mismatch for ${dbItem.name}. Expected ₹${dbItem.price}, got ₹${linePrice}`,

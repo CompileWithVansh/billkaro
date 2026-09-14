@@ -59,6 +59,8 @@ export async function printBill({
   // When paying via Cash or Udhaar: DO NOT print QR code to save paper!
   // When Split payment: print QR with the exact split UPI amount!
   const printQrEnabled = (typeof window !== 'undefined' && localStorage.getItem('billkaro_print_qr_enabled')) !== 'false';
+  const printLogoEnabled = (typeof window !== 'undefined' && localStorage.getItem('billkaro_print_logo_enabled')) === 'true';
+  const storeLogo = (typeof window !== 'undefined' && localStorage.getItem('billkaro_store_logo')) || '';
   let qrDataUrl = '';
   const isCashOnly = paymentMethod === 'cash';
   const isUdhaar = paymentMethod === 'udhaar';
@@ -267,6 +269,10 @@ export async function printBill({
   </style>
 </head>
 <body>
+  ${printLogoEnabled && storeLogo ? `
+  <div style="text-align: center; margin-bottom: 4px;">
+    <img src="${storeLogo}" alt="Store Logo" style="max-height: ${is58mm ? '42px' : '54px'}; max-width: ${is58mm ? '140px' : '180px'}; object-fit: contain; filter: grayscale(100%) contrast(140%);" />
+  </div>` : ''}
   <div class="store-name">${escHtml(user.storeName)}</div>
   ${user.address ? `<div class="store-sub">${escHtml(user.address)}</div>` : ''}
   ${user.phone   ? `<div class="store-sub">Mob No - ${escHtml(user.phone)}</div>` : ''}

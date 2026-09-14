@@ -514,6 +514,80 @@ class EscPosBuilder {
     return this;
   }
 
+  // Rasterize restaurant logo bitmap to ESC/POS thermal format
+  async rasterStoreLogo(dataUrl: string): Promise<this> {
+    try {
+      if (typeof document === 'undefined' || !dataUrl) return this;
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+
+      const paperWidth = (typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_printer_paper_width') : null) || '58mm';
+      const maxDots = paperWidth === '80mm' ? 576 : 384;
+      const maxTargetHeight = paperWidth === '80mm' ? 100 : 70;
+
+      let w = img.width;
+      let h = img.height;
+      if (w > maxDots * 0.7) {
+        h = Math.round((h * (maxDots * 0.7)) / w);
+        w = Math.round(maxDots * 0.7);
+      }
+      if (h > maxTargetHeight) {
+        w = Math.round((w * maxTargetHeight) / h);
+        h = maxTargetHeight;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = maxDots;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return this;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, maxDots, h);
+
+      // Draw image horizontally centered
+      const xOffset = Math.floor((maxDots - w) / 2);
+      ctx.drawImage(img, xOffset, 0, w, h);
+
+      const imgData = ctx.getImageData(0, 0, maxDots, h);
+      const pixels = imgData.data;
+      const bytesPerLine = Math.floor(maxDots / 8);
+
+      this.alignLeft();
+      this.buffer.push(0x1d, 0x76, 0x30, 0x00);
+      this.buffer.push(bytesPerLine & 0xff, (bytesPerLine >> 8) & 0xff);
+      this.buffer.push(h & 0xff, (h >> 8) & 0xff);
+
+      for (let y = 0; y < h; y++) {
+        for (let xByte = 0; xByte < bytesPerLine; xByte++) {
+          let byteVal = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            const xDot = xByte * 8 + bit;
+            const idx = (y * maxDots + xDot) * 4;
+            const r = pixels[idx];
+            const g = pixels[idx + 1];
+            const b = pixels[idx + 2];
+            const a = pixels[idx + 3];
+            const isBlack = a > 80 && (r * 0.299 + g * 0.587 + b * 0.114) < 170;
+            if (isBlack) {
+              byteVal |= (1 << (7 - bit));
+            }
+          }
+          this.buffer.push(byteVal);
+        }
+      }
+
+      this.alignCenter();
+    } catch (err) {
+      console.warn('[Bluetooth] Failed to rasterize store logo:', err);
+    }
+    return this;
+  }
+
   feed(lines: number = 3): this {
     for (let i = 0; i < lines; i++) {
       this.buffer.push(0x0a);
@@ -593,6 +667,13 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
 
   try {
     const builder = new EscPosBuilder();
+
+    // 0. Optional Restaurant Logo
+    const printLogoEnabled = (typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_print_logo_enabled') : null) === 'true';
+    const storeLogo = (typeof localStorage !== 'undefined' ? localStorage.getItem('billkaro_store_logo') : null) || '';
+    if (printLogoEnabled && storeLogo) {
+      await builder.rasterStoreLogo(storeLogo);
+    }
 
     // 1. Crystal-Clear Raster Store Header (No feed, no ROM blur, no horizontal splitting line, zero wasted paper)
     const storeName = (user.storeName || 'RESTAURANT').trim().toUpperCase();

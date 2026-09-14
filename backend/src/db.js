@@ -43,7 +43,9 @@ export function getPool() {
   pool = new Pool({
     connectionString: clean,
     ssl: { rejectUnauthorized: false },
-    max: 5,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
   });
   return pool;
 }
@@ -266,6 +268,16 @@ export const itemsRepo = {
     );
     return rows[0] || null;
   },
+  async findByIds(ids, userId) {
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    const validIds = ids.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+    if (validIds.length === 0) return [];
+    const { rows } = await getPool().query(
+      'SELECT * FROM billkaro_items WHERE id = ANY($1::int[]) AND user_id = $2',
+      [validIds, Number(userId)]
+    );
+    return rows;
+  },
   async create(userId, { name, price, color, category, description, stockQuantity }) {
     const { rows: maxRows } = await getPool().query(
       'SELECT COALESCE(MAX(sort_order), -1) AS m FROM billkaro_items WHERE user_id = $1',
@@ -315,18 +327,21 @@ export const itemsRepo = {
   },
   async deductStock(userId, items) {
     if (!Array.isArray(items) || items.length === 0) return;
+    const linesToDeduct = items.filter(
+      (line) => line && line.itemId && Number(line.qty) > 0
+    );
+    if (linesToDeduct.length === 0) return;
+
     const client = await getPool().connect();
     try {
       await client.query('BEGIN');
-      for (const line of items) {
-        if (line.itemId && Number(line.qty) > 0) {
-          await client.query(
-            `UPDATE billkaro_items 
-             SET stock_quantity = GREATEST(0, stock_quantity - $1) 
-             WHERE id = $2 AND user_id = $3 AND stock_quantity IS NOT NULL`,
-            [Number(line.qty), Number(line.itemId), Number(userId)]
-          );
-        }
+      for (const line of linesToDeduct) {
+        await client.query(
+          `UPDATE billkaro_items 
+           SET stock_quantity = GREATEST(0, stock_quantity - $1) 
+           WHERE id = $2 AND user_id = $3 AND stock_quantity IS NOT NULL`,
+          [Number(line.qty), Number(line.itemId), Number(userId)]
+        );
       }
       await client.query('COMMIT');
     } catch (e) {
