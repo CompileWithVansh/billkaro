@@ -243,16 +243,23 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
         return;
       }
 
-      const formatted: ScannedMenuItem[] = items.map((item, idx) => ({
-        id: `scanned_${Date.now()}_${idx}`,
-        name: item.name,
-        category: item.category || 'General',
-        price: Number(item.price) || 0,
-        description: item.description || '',
-        color: item.color || '#2563eb',
-        selected: true,
-        variants: item.variants && item.variants.length > 0 ? item.variants : undefined,
-      }));
+      const formatted: ScannedMenuItem[] = items.map((item, idx) => {
+        const itemVariants = item.variants && item.variants.length > 0 ? item.variants : undefined;
+        const lowestPrice = itemVariants
+          ? Math.min(...itemVariants.map((v) => Math.max(0, Number(v.price) || 0)))
+          : Math.max(0, Number(item.price) || 0);
+
+        return {
+          id: `scanned_${Date.now()}_${idx}`,
+          name: item.name,
+          category: item.category || 'General',
+          price: lowestPrice,
+          description: item.description || '',
+          color: item.color || '#2563eb',
+          selected: true,
+          variants: itemVariants,
+        };
+      });
 
       setScannedItems(formatted);
       setSelectedCategory('All');
@@ -382,8 +389,14 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
           }
         }
 
-        const rawPrice = item.price !== undefined ? item.price : (item.cost ?? item.rate ?? (itemVariants?.[0]?.price ?? 0));
-        const priceNum = typeof rawPrice === 'number' ? rawPrice : Number(String(rawPrice).replace(/[^\d.]/g, '')) || (itemVariants?.[0]?.price ?? 0);
+        const lowestVariantPrice = itemVariants && itemVariants.length > 0
+          ? Math.min(...itemVariants.map((v) => v.price))
+          : undefined;
+
+        const rawPrice = lowestVariantPrice !== undefined
+          ? lowestVariantPrice
+          : (item.price !== undefined ? item.price : (item.cost ?? item.rate ?? 0));
+        const priceNum = typeof rawPrice === 'number' ? rawPrice : Number(String(rawPrice).replace(/[^\d.]/g, '')) || 0;
 
         formatted.push({
           id: `pasted_${Date.now()}_${i}`,
@@ -485,14 +498,20 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
       for (let i = 0; i < selected.length; i += BATCH_SIZE) {
         const batch = selected.slice(i, i + BATCH_SIZE);
         await api.post('/items/bulk', {
-          items: batch.map((item) => ({
-            name: item.name.trim(),
-            category: item.category.trim(),
-            price: Math.max(0, Number(item.price) || 0),
-            description: item.description.trim(),
-            color: item.color,
-            variants: item.variants && item.variants.length > 0 ? item.variants : undefined,
-          })),
+          items: batch.map((item) => {
+            const minVariantPrice = item.variants && item.variants.length > 0
+              ? Math.min(...item.variants.map((v) => Math.max(0, Number(v.price) || 0)))
+              : Math.max(0, Number(item.price) || 0);
+
+            return {
+              name: item.name.trim(),
+              category: item.category.trim(),
+              price: minVariantPrice,
+              description: item.description.trim(),
+              color: item.color,
+              variants: item.variants && item.variants.length > 0 ? item.variants : undefined,
+            };
+          }),
         });
       }
 

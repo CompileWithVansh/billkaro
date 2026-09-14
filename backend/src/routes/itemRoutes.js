@@ -134,7 +134,13 @@ export function parseAndValidateItem(body, isUpdate = false) {
           price: vPrice,
         });
       }
-      if (cleanVariants.length === 0) cleanVariants = null;
+      if (cleanVariants.length === 0) {
+        cleanVariants = null;
+      } else {
+        // Authoritative rule: Base price is always the lowest portion tier (e.g. Quarter if 3 divisions, Half if 2 divisions)
+        const lowestVariantPrice = Math.min(...cleanVariants.map((v) => v.price));
+        value.price = lowestVariantPrice;
+      }
     }
     value.variants = cleanVariants;
   }
@@ -331,10 +337,14 @@ Return strictly a JSON array of objects with no markdown code fences or other te
               .filter((v) => v.name)
           : undefined;
 
+        const minVariantPrice = cleanVariants && cleanVariants.length > 0
+          ? Math.min(...cleanVariants.map((v) => v.price))
+          : 0;
+
         return {
           name: i.name.trim(),
           category: cat,
-          price: Math.max(0, Number(i.price) || (cleanVariants?.[0]?.price ?? 0)),
+          price: cleanVariants && cleanVariants.length > 0 ? minVariantPrice : Math.max(0, Number(i.price) || 0),
           description: (i.description || '').trim(),
           color: catColorMap.get(cat.toLowerCase()),
           variants: cleanVariants && cleanVariants.length > 0 ? cleanVariants : undefined,
@@ -372,9 +382,13 @@ router.post(
       }
 
       const cleanVariants = Array.isArray(item.variants) && item.variants.length > 0 ? item.variants : undefined;
+      const finalPrice = cleanVariants && cleanVariants.length > 0
+        ? Math.min(...cleanVariants.map((v) => Math.max(0, Number(v.price) || 0)))
+        : cleanPrice;
+
       const created = await itemsRepo.create(req.userId, {
         name: cleanName,
-        price: cleanPrice,
+        price: finalPrice,
         color: cleanColor,
         category: cleanCategory,
         description: cleanDesc,

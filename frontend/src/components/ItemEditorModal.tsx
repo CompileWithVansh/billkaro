@@ -70,8 +70,9 @@ export default function ItemEditorModal({
       }));
 
     let finalPrice = Number(price) || 0;
-    if (cleanVariants.length > 0 && finalPrice === 0) {
-      finalPrice = cleanVariants[0].price;
+    if (cleanVariants.length > 0) {
+      // Base price is ALWAYS the lowest portion value (e.g. Quarter if 3 divisions, Half if 2 divisions)
+      finalPrice = Math.min(...cleanVariants.map((v) => v.price));
     }
 
     onSave({
@@ -85,6 +86,13 @@ export default function ItemEditorModal({
     });
   }
 
+  const lowestVariant = useMemo(() => {
+    if (variants.length === 0) return null;
+    const valid = variants.filter((v) => v.name.trim() && Number(v.price) > 0);
+    if (valid.length === 0) return variants[0] || null;
+    return [...valid].sort((a, b) => Number(a.price) - Number(b.price))[0];
+  }, [variants]);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -96,8 +104,28 @@ export default function ItemEditorModal({
         </div>
 
         <div className="field">
-          <label>{variants.length > 0 ? 'Base / Starting Price (₹)' : 'Price (₹)'}</label>
-          <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <label style={{ margin: 0 }}>
+              {variants.length > 0 ? 'Base / Starting Price (₹)' : 'Price (₹)'}
+            </label>
+            {variants.length > 0 && lowestVariant && Number(lowestVariant.price) > 0 && (
+              <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600 }}>
+                Lowest portion ({lowestVariant.name}): ₹{lowestVariant.price}
+              </span>
+            )}
+          </div>
+          <input
+            type="number"
+            step="0.01"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder="0.00"
+          />
+          {variants.length > 0 && (
+            <span style={{ fontSize: '0.72rem', color: 'var(--muted)', marginTop: 2 }}>
+              💡 With portion sizes enabled, base price automatically saves as the lowest portion (e.g. Quarter if 3 divisions, Half if 2 divisions).
+            </span>
+          )}
         </div>
 
         {/* Optional Portion Sizes / Variants Section */}
@@ -152,12 +180,16 @@ export default function ItemEditorModal({
                     className="btn ghost sm-btn"
                     onClick={() => {
                       const p = Number(price) || 0;
+                      const halfP = p ? Math.round(p / 2) : 0;
+                      const fullP = p || 0;
                       setVariants([
-                        { id: 'v1', name: 'Half', price: p ? Math.round(p * 0.6) : 0 },
-                        { id: 'v2', name: 'Full', price: p || 0 },
+                        { id: 'v1', name: 'Half', price: halfP },
+                        { id: 'v2', name: 'Full', price: fullP },
                       ]);
+                      if (halfP > 0) setPrice(String(halfP));
                     }}
                     style={{ fontSize: '0.7rem', padding: '2px 6px' }}
+                    title="2 divisions: Half (50%) & Full (100%). Base price sets to Half."
                   >
                     Half / Full
                   </button>
@@ -166,13 +198,18 @@ export default function ItemEditorModal({
                     className="btn ghost sm-btn"
                     onClick={() => {
                       const p = Number(price) || 0;
+                      const qtrP = p ? Math.round(p / 4) : 0;
+                      const halfP = p ? Math.round(p / 2) : 0;
+                      const fullP = p || 0;
                       setVariants([
-                        { id: 'v1', name: 'Quarter', price: p ? Math.round(p * 0.35) : 0 },
-                        { id: 'v2', name: 'Half', price: p ? Math.round(p * 0.6) : 0 },
-                        { id: 'v3', name: 'Full', price: p || 0 },
+                        { id: 'v1', name: 'Quarter', price: qtrP },
+                        { id: 'v2', name: 'Half', price: halfP },
+                        { id: 'v3', name: 'Full', price: fullP },
                       ]);
+                      if (qtrP > 0) setPrice(String(qtrP));
                     }}
                     style={{ fontSize: '0.7rem', padding: '2px 6px' }}
+                    title="3 divisions: Quarter (25%), Half (50%) & Full (100%). Base price sets to Quarter."
                   >
                     Qtr / Half / Full
                   </button>
@@ -180,13 +217,19 @@ export default function ItemEditorModal({
                     type="button"
                     className="btn ghost sm-btn"
                     onClick={() => {
+                      const p = Number(price) || 0;
+                      const p250 = p ? Math.round(p / 4) : 0;
+                      const p500 = p ? Math.round(p / 2) : 0;
+                      const p1kg = p || 0;
                       setVariants([
-                        { id: 'v1', name: '250g', price: 0 },
-                        { id: 'v2', name: '500g', price: 0 },
-                        { id: 'v3', name: '1kg', price: 0 },
+                        { id: 'v1', name: '250g', price: p250 },
+                        { id: 'v2', name: '500g', price: p500 },
+                        { id: 'v3', name: '1kg', price: p1kg },
                       ]);
+                      if (p250 > 0) setPrice(String(p250));
                     }}
                     style={{ fontSize: '0.7rem', padding: '2px 6px' }}
+                    title="3 divisions: 250g (25%), 500g (50%) & 1kg (100%). Base price sets to 250g."
                   >
                     250g / 500g / 1kg
                   </button>
@@ -214,7 +257,12 @@ export default function ItemEditorModal({
                       placeholder="0"
                       onChange={(e) => {
                         const val = Math.max(0, Number(e.target.value) || 0);
-                        setVariants((prev) => prev.map((item, i) => (i === idx ? { ...item, price: val } : item)));
+                        const updated = variants.map((item, i) => (i === idx ? { ...item, price: val } : item));
+                        setVariants(updated);
+                        const positivePrices = updated.map((item) => item.price).filter((pr) => pr > 0);
+                        if (positivePrices.length > 0) {
+                          setPrice(String(Math.min(...positivePrices)));
+                        }
                       }}
                       style={{ width: '100%', padding: '6px 6px 6px 20px', fontSize: '0.85rem', fontWeight: 700, color: '#86efac' }}
                     />

@@ -564,6 +564,7 @@ select {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
   gap: 12px;
+  grid-auto-flow: dense;
 }
 
 .item-btn {
@@ -582,6 +583,12 @@ select {
   touch-action: manipulation;
   overflow: hidden;
   transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.item-btn.has-variants {
+  grid-column: span 2;
+  min-height: 122px;
+  justify-content: flex-start;
+  padding: 12px 14px;
 }
 .item-btn:hover {
   transform: translateY(-2px);
@@ -1120,10 +1127,16 @@ select {
   .item-grid {
     grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
     gap: 10px;
+    grid-auto-flow: dense;
   }
   .item-btn {
     min-height: 88px;
     padding: 10px;
+  }
+  .item-btn.has-variants {
+    grid-column: span 2;
+    min-height: 116px;
+    padding: 10px 12px;
   }
   .item-btn .name {
     font-size: 14px;

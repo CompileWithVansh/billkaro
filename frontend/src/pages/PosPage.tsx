@@ -541,6 +541,16 @@ export default function PosPage() {
     return map;
   }, [activeBill]);
 
+  const qtyByVariant = useMemo(() => {
+    const map = new Map<string, number>();
+    activeBill?.lines.forEach((l) => {
+      if (l.itemId != null && l.variantId) {
+        map.set(`${l.itemId}_${l.variantId}`, (map.get(`${l.itemId}_${l.variantId}`) ?? 0) + l.qty);
+      }
+    });
+    return map;
+  }, [activeBill]);
+
   const { subtotal, tax, total } = useMemo(
     () => billTotal(activeBill ?? { id: '', label: '', lines: [] }, taxPercent, taxEnabled, taxInclusive),
     [activeBill, taxPercent, taxEnabled, taxInclusive]
@@ -596,11 +606,14 @@ export default function PosPage() {
     });
   }
 
-  function removeFromCart(item: Item) {
+  function removeFromCart(item: Item, variant?: ItemVariant) {
     updateActiveBill((b) => {
-      const matchingLines = b.lines.filter((l) => l.itemId === item.id);
+      const vId = variant ? variant.id : undefined;
+      const matchingLines = b.lines.filter(
+        (l) => l.itemId === item.id && (vId !== undefined ? l.variantId === vId : true)
+      );
       if (matchingLines.length === 0) return b;
-      // Decrement the last matching line
+      // Decrement the matching line
       const line = matchingLines[matchingLines.length - 1];
       let lines: CartLine[];
       if (line.qty > 1) {
@@ -1423,6 +1436,7 @@ export default function PosPage() {
                           onTap={addToCart}
                           onDecrement={removeFromCart}
                           onEdit={openEditItem}
+                          variantQtys={qtyByVariant}
                         />
                       ))}
                     </div>
@@ -1456,6 +1470,7 @@ export default function PosPage() {
                       onTap={addToCart}
                       onDecrement={removeFromCart}
                       onEdit={openEditItem}
+                      variantQtys={qtyByVariant}
                     />
                   ))}
                 </div>

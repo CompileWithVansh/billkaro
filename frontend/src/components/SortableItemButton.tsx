@@ -7,8 +7,9 @@ interface Props {
   qty: number;
   locked: boolean;
   onTap: (item: Item, variant?: ItemVariant) => void;
-  onDecrement?: (item: Item) => void;
+  onDecrement?: (item: Item, variant?: ItemVariant) => void;
   onEdit: (item: Item) => void;
+  variantQtys?: Map<string, number>;
 }
 
 /**
@@ -18,7 +19,15 @@ interface Props {
  * - When UNLOCKED, the button becomes draggable to rearrange, and a small
  *   edit dot lets you edit/delete the item.
  */
-export default function SortableItemButton({ item, qty, locked, onTap, onDecrement, onEdit }: Props) {
+export default function SortableItemButton({
+  item,
+  qty,
+  locked,
+  onTap,
+  onDecrement,
+  onEdit,
+  variantQtys,
+}: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
     disabled: locked,
@@ -39,6 +48,8 @@ export default function SortableItemButton({ item, qty, locked, onTap, onDecreme
     border: isOutOfStock ? '1.5px solid rgba(239, 68, 68, 0.55)' : undefined,
   };
 
+  const numCols = hasVariants && item.variants ? (item.variants.length === 3 ? 3 : 2) : 1;
+
   return (
     <button
       type="button"
@@ -50,14 +61,16 @@ export default function SortableItemButton({ item, qty, locked, onTap, onDecreme
       onClick={() => {
         if (locked && !isOutOfStock) {
           if (hasVariants && item.variants && item.variants.length > 0) {
-            onTap(item, item.variants[0]);
+            const lowestVariant = [...item.variants].sort((a, b) => a.price - b.price)[0] || item.variants[0];
+            onTap(item, lowestVariant);
           } else {
             onTap(item);
           }
         }
       }}
     >
-      {qty > 0 && (
+      {/* Corner badge for standard non-variant items */}
+      {!hasVariants && qty > 0 && (
         <span
           className={`badge ${!locked ? 'with-edit' : ''}`}
           title={locked ? 'Tap to subtract 1' : undefined}
@@ -91,99 +104,193 @@ export default function SortableItemButton({ item, qty, locked, onTap, onDecreme
         </span>
       )}
 
-      <span className="name">{item.name}</span>
-
       {hasVariants ? (
-        <div
-          className="variant-chips-grid"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: 4,
-            marginTop: 6,
-            width: '100%',
-          }}
-        >
-          {item.variants!.map((v, idx) => {
-            const isOddTotal = item.variants!.length % 2 === 1;
-            const isLastOdd = isOddTotal && idx === item.variants!.length - 1;
-            return (
-              <div
-                key={v.id || idx}
-                role="button"
-                tabIndex={0}
-                className="variant-chip-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (locked && !isOutOfStock) onTap(item, v);
-                }}
-                onPointerDown={(e) => {
-                  if (locked) e.stopPropagation();
-                }}
-                style={{
-                  gridColumn: isLastOdd ? 'span 2' : 'auto',
-                  background: 'rgba(0, 0, 0, 0.35)',
-                  border: '1px solid rgba(255, 255, 255, 0.25)',
-                  borderRadius: 6,
-                  padding: '4px 3px',
-                  color: '#ffffff',
-                  display: 'flex',
-                  flexDirection: isLastOdd ? 'row' : 'column',
-                  gap: isLastOdd ? 6 : 1,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: locked ? (isOutOfStock ? 'not-allowed' : 'pointer') : 'grab',
-                  minHeight: 32,
-                  boxSizing: 'border-box',
-                }}
-              >
-                <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
-                  {v.name}
-                </span>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#86efac' }}>
-                  ₹{v.price % 1 === 0 ? v.price.toFixed(0) : v.price.toFixed(2)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="item-btn-footer" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', width: '100%' }}>
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
+          {/* Item Name & Portions Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 6 }}>
             <span
-              className="price"
+              className="name"
               style={{
-                textDecoration: isOutOfStock ? 'line-through' : undefined,
-                opacity: isOutOfStock ? 0.6 : 0.95,
-                fontSize: isOutOfStock ? '13px' : undefined,
+                margin: 0,
+                fontSize: '0.96rem',
+                fontWeight: 800,
+                textAlign: 'left',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: '68%',
               }}
             >
-              ₹{item.price % 1 === 0 ? item.price.toFixed(0) : item.price.toFixed(2)}
+              {item.name}
             </span>
-            {!isOutOfStock && isLowStock && (
-              <span className="stock-badge low">⚠️ {item.stockQuantity}</span>
-            )}
-            {!isOutOfStock && !isLowStock && item.stockQuantity !== null && item.stockQuantity !== undefined && (
-              <span className="stock-badge normal">{item.stockQuantity}</span>
-            )}
+            <span
+              style={{
+                fontSize: '0.70rem',
+                background: qty > 0 ? '#38bdf8' : 'rgba(0, 0, 0, 0.38)',
+                color: qty > 0 ? '#0f172a' : '#ffffff',
+                padding: '2px 8px',
+                borderRadius: 10,
+                fontWeight: 800,
+                letterSpacing: '0.3px',
+                flexShrink: 0,
+              }}
+            >
+              {qty > 0 ? `${qty} in cart` : `${item.variants!.length} sizes`}
+            </span>
           </div>
 
-          {isOutOfStock && (
-            <div
-              className="stock-badge out"
-              style={{
-                width: '100%',
-                justifyContent: 'center',
-                textAlign: 'center',
-                padding: '2px 4px',
-                fontSize: '9.5px',
-                letterSpacing: '0.4px',
-              }}
-            >
-              Out of Stock
-            </div>
-          )}
+          {/* Portion Chips Grid */}
+          <div
+            className="variant-chips-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${numCols}, 1fr)`,
+              gap: 6,
+              width: '100%',
+              marginTop: 'auto',
+            }}
+          >
+            {item.variants!.map((v, idx) => {
+              const vKey = `${item.id}_${v.id}`;
+              const vQty = variantQtys ? (variantQtys.get(vKey) ?? 0) : 0;
+              const isSelected = vQty > 0;
+
+              return (
+                <div
+                  key={v.id || idx}
+                  role="button"
+                  tabIndex={0}
+                  className={`variant-chip-btn ${isSelected ? 'active' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (locked && !isOutOfStock) onTap(item, v);
+                  }}
+                  onPointerDown={(e) => {
+                    if (locked) e.stopPropagation();
+                  }}
+                  style={{
+                    position: 'relative',
+                    background: isSelected ? 'rgba(15, 23, 42, 0.94)' : 'rgba(0, 0, 0, 0.38)',
+                    border: isSelected ? '2px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.22)',
+                    boxShadow: isSelected ? '0 0 10px rgba(56, 189, 248, 0.45)' : 'none',
+                    borderRadius: 8,
+                    padding: '6px 4px',
+                    color: '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: locked ? (isOutOfStock ? 'not-allowed' : 'pointer') : 'grab',
+                    minHeight: 44,
+                    boxSizing: 'border-box',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {/* Individual Portion Quantity Badge with decrement */}
+                  {isSelected && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: -7,
+                        right: -7,
+                        background: '#38bdf8',
+                        color: '#0f172a',
+                        borderRadius: '50%',
+                        minWidth: 20,
+                        height: 20,
+                        padding: '0 4px',
+                        fontSize: '0.72rem',
+                        fontWeight: 900,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.6)',
+                        zIndex: 4,
+                        cursor: 'pointer',
+                      }}
+                      title="Tap to subtract 1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (locked && onDecrement) {
+                          onDecrement(item, v);
+                        }
+                      }}
+                    >
+                      {vQty}
+                    </span>
+                  )}
+
+                  <span
+                    style={{
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      opacity: isSelected ? 1 : 0.9,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: '100%',
+                      textTransform: 'capitalize',
+                      lineHeight: 1.15,
+                    }}
+                  >
+                    {v.name}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '0.88rem',
+                      fontWeight: 800,
+                      color: isSelected ? '#38bdf8' : '#4ade80',
+                      marginTop: 2,
+                      lineHeight: 1.15,
+                    }}
+                  >
+                    ₹{v.price % 1 === 0 ? v.price.toFixed(0) : v.price.toFixed(2)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
+      ) : (
+        <>
+          <span className="name">{item.name}</span>
+          <div className="item-btn-footer" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', width: '100%' }}>
+              <span
+                className="price"
+                style={{
+                  textDecoration: isOutOfStock ? 'line-through' : undefined,
+                  opacity: isOutOfStock ? 0.6 : 0.95,
+                  fontSize: isOutOfStock ? '13px' : undefined,
+                }}
+              >
+                ₹{item.price % 1 === 0 ? item.price.toFixed(0) : item.price.toFixed(2)}
+              </span>
+              {!isOutOfStock && isLowStock && (
+                <span className="stock-badge low">⚠️ {item.stockQuantity}</span>
+              )}
+              {!isOutOfStock && !isLowStock && item.stockQuantity !== null && item.stockQuantity !== undefined && (
+                <span className="stock-badge normal">{item.stockQuantity}</span>
+              )}
+            </div>
+
+            {isOutOfStock && (
+              <div
+                className="stock-badge out"
+                style={{
+                  width: '100%',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                  padding: '2px 4px',
+                  fontSize: '9.5px',
+                  letterSpacing: '0.4px',
+                }}
+              >
+                Out of Stock
+              </div>
+            )}
+          </div>
+        </>
       )}
     </button>
   );
