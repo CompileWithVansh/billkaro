@@ -15,6 +15,12 @@ export interface User {
   taxInclusive?: boolean;
 }
 
+export interface ItemVariant {
+  id: string;        // unique id e.g. "v1", "v2"
+  name: string;      // e.g. "Quarter", "Half", "Full"
+  price: number;     // e.g. 130, 260, 520
+}
+
 export interface Item {
   id: number;
   name: string;
@@ -24,6 +30,7 @@ export interface Item {
   description?: string;
   stockQuantity: number | null;
   sortOrder: number;
+  variants?: ItemVariant[];
 }
 
 export interface CartLine {
@@ -34,6 +41,8 @@ export interface CartLine {
   qty: number;
   category?: string;       // item category shown as description on the receipt
   description?: string;    // item description shown on receipt / WhatsApp
+  variantId?: string;      // optional variant identifier
+  variantName?: string;    // e.g. "Half", "Full"
 }
 
 export function getItemDesc(

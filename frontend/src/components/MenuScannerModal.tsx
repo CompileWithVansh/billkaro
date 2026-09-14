@@ -10,6 +10,7 @@ export interface ScannedMenuItem {
   description: string;
   color: string;
   selected: boolean;
+  variants?: Array<{ id?: string; name: string; price: number }>;
 }
 
 interface MenuScannerModalProps {
@@ -19,7 +20,53 @@ interface MenuScannerModalProps {
 
 const CATEGORY_PALETTE = ITEM_COLORS;
 
-const AI_MENU_PROMPT = `You are an expert restaurant and cafe menu digitizer for the BillKaro POS billing system.
+const AI_MENU_PROMPT_GROUPED = `You are an expert restaurant and cafe menu digitizer for the BillKaro POS billing system.
+Analyze the provided menu card (from this image or text). Extract all food items, beverages, and dishes, grouped logically into menu categories. Each category will automatically become a menu tab in the BillKaro POS app.
+
+Return ONLY a valid JSON array of objects with the exact schema below (strictly no markdown preamble or conversational text, output only the JSON array):
+
+[
+  {
+    "name": "Tawa Chicken",
+    "category": "Main Course",
+    "price": 130,
+    "variants": [
+      { "name": "Quarter", "price": 130 },
+      { "name": "Half", "price": 260 },
+      { "name": "Full", "price": 520 }
+    ],
+    "description": "Succulent spiced chicken cooked on a traditional tawa",
+    "color": "#16a34a"
+  },
+  {
+    "name": "Cold Coffee with Ice Cream",
+    "category": "Beverages",
+    "price": 110,
+    "description": "Chilled chocolate blend 250ml",
+    "color": "#2563eb"
+  },
+  {
+    "name": "Margherita Pizza",
+    "category": "Pizza",
+    "price": 180,
+    "variants": [
+      { "name": "Regular", "price": 180 },
+      { "name": "Medium", "price": 320 }
+    ],
+    "description": "Fresh mozzarella, tomato basil sauce",
+    "color": "#d97706"
+  }
+]
+
+RULES FOR ACCURATE BILLKARO POS FORMAT:
+1. "name": Clean item/dish name (max 60 characters).
+2. "category": The logical menu section/tab name (e.g. "Beverages", "Starters", "Main Course", "Breads", "Pizza", "Burgers", "Chinese", "Desserts"). All items sharing this category will appear inside that category tab in the POS.
+3. "price": Numeric price in INR. For dishes with portion variants, set "price" to the starting/lowest portion price.
+4. "variants": If the dish has multiple portion sizes, weights, or tiers (e.g. Quarter / Half / Full, 250g / 500g / 1kg, Small / Medium / Large), group them in a "variants" array with objects containing "name" and "price". If the item has only one standard size, omit "variants".
+5. "description": Portion size, ingredients, spice level, or veg/non-veg tag if present (keep concise, under 100 characters).
+6. "color": Optional hex color code matching the category.`;
+
+const AI_MENU_PROMPT_FLAT = `You are an expert restaurant and cafe menu digitizer for the BillKaro POS billing system.
 Analyze the provided menu card (from this image or text). Extract all food items, beverages, and dishes, grouped logically into menu categories. Each category will automatically become a menu tab in the BillKaro POS app.
 
 Return ONLY a valid JSON array of objects with the exact schema below (strictly no markdown preamble or conversational text, output only the JSON array):
@@ -55,7 +102,54 @@ RULES FOR ACCURATE BILLKARO POS FORMAT:
 4. "description": Portion size, ingredients, spice level, or veg/non-veg tag if present (keep concise, under 100 characters).
 5. "color": Optional hex color code matching the category.`;
 
-const SAMPLE_MENU_JSON = `[
+const SAMPLE_MENU_JSON_GROUPED = `[
+  {
+    "name": "Tawa Chicken",
+    "category": "Main Course",
+    "price": 130,
+    "variants": [
+      { "name": "Quarter", "price": 130 },
+      { "name": "Half", "price": 260 },
+      { "name": "Full", "price": 520 }
+    ],
+    "description": "Succulent spiced chicken cuts on flat griddle",
+    "color": "#16a34a"
+  },
+  {
+    "name": "Dal Makhani",
+    "category": "Main Course",
+    "price": 140,
+    "variants": [
+      { "name": "Half", "price": 140 },
+      { "name": "Full", "price": 240 }
+    ],
+    "description": "Slow cooked black lentils with fresh cream",
+    "color": "#16a34a"
+  },
+  {
+    "name": "Butter Naan",
+    "category": "Breads",
+    "price": 45,
+    "description": "Crispy clay-oven baked bread",
+    "color": "#d97706"
+  },
+  {
+    "name": "Cold Coffee with Ice Cream",
+    "category": "Beverages",
+    "price": 110,
+    "description": "Chilled chocolate blend with vanilla scoop",
+    "color": "#2563eb"
+  },
+  {
+    "name": "Gulab Jamun (2 Pcs)",
+    "category": "Desserts",
+    "price": 70,
+    "description": "Warm milk dumplings in rose cardamom syrup",
+    "color": "#9333ea"
+  }
+]`;
+
+const SAMPLE_MENU_JSON_FLAT = `[
   {
     "name": "Paneer Butter Masala",
     "category": "Main Course",
@@ -85,13 +179,6 @@ const SAMPLE_MENU_JSON = `[
     "color": "#2563eb"
   },
   {
-    "name": "Crispy Veg Spring Rolls",
-    "category": "Starters",
-    "price": 150,
-    "description": "Served with sweet chili dip (6 pcs)",
-    "color": "#ea580c"
-  },
-  {
     "name": "Gulab Jamun (2 Pcs)",
     "category": "Desserts",
     "price": 70,
@@ -103,6 +190,7 @@ const SAMPLE_MENU_JSON = `[
 export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalProps) {
   const [step, setStep] = useState<'upload' | 'scanning' | 'review'>('upload');
   const [inputTab, setInputTab] = useState<'scan' | 'prompt'>('scan');
+  const [groupPortions, setGroupPortions] = useState<boolean>(true);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [scannedItems, setScannedItems] = useState<ScannedMenuItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -143,9 +231,10 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
       const res = await api.post('/items/scan-menu', {
         imageBase64: base64Image,
         mimeType: mimeType || 'image/jpeg',
+        groupPortions,
       });
 
-      const items: Array<{ name: string; category: string; price: number; description?: string; color?: string }> =
+      const items: Array<{ name: string; category: string; price: number; description?: string; color?: string; variants?: any[] }> =
         res.data?.items || [];
 
       if (items.length === 0) {
@@ -162,6 +251,7 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
         description: item.description || '',
         color: item.color || '#2563eb',
         selected: true,
+        variants: item.variants && item.variants.length > 0 ? item.variants : undefined,
       }));
 
       setScannedItems(formatted);
@@ -177,7 +267,7 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
 
   function handleCopyPrompt() {
     try {
-      navigator.clipboard.writeText(AI_MENU_PROMPT);
+      navigator.clipboard.writeText(groupPortions ? AI_MENU_PROMPT_GROUPED : AI_MENU_PROMPT_FLAT);
       setCopiedPrompt(true);
       setTimeout(() => setCopiedPrompt(false), 2500);
     } catch (err) {
@@ -198,7 +288,7 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
   }
 
   function handleLoadSample() {
-    setJsonInput(SAMPLE_MENU_JSON);
+    setJsonInput(groupPortions ? SAMPLE_MENU_JSON_GROUPED : SAMPLE_MENU_JSON_FLAT);
     setError(null);
   }
 
@@ -278,8 +368,22 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
           colIdx++;
         }
 
-        const rawPrice = item.price !== undefined ? item.price : (item.cost ?? item.rate ?? 0);
-        const priceNum = typeof rawPrice === 'number' ? rawPrice : Number(String(rawPrice).replace(/[^\d.]/g, '')) || 0;
+        let itemVariants: Array<{ id: string; name: string; price: number }> | undefined;
+        if (Array.isArray(item.variants) && item.variants.length > 0) {
+          const mapped = item.variants
+            .map((v: any, vIdx: number) => ({
+              id: `v_${Date.now()}_${vIdx}`,
+              name: String(v.name || v.portion || v.size || '').trim(),
+              price: typeof v.price === 'number' ? v.price : Number(String(v.price).replace(/[^\d.]/g, '')) || 0,
+            }))
+            .filter((v: any) => v.name && v.price >= 0);
+          if (mapped.length > 0) {
+            itemVariants = mapped;
+          }
+        }
+
+        const rawPrice = item.price !== undefined ? item.price : (item.cost ?? item.rate ?? (itemVariants?.[0]?.price ?? 0));
+        const priceNum = typeof rawPrice === 'number' ? rawPrice : Number(String(rawPrice).replace(/[^\d.]/g, '')) || (itemVariants?.[0]?.price ?? 0);
 
         formatted.push({
           id: `pasted_${Date.now()}_${i}`,
@@ -289,6 +393,7 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
           description: String(item.description || item.desc || item.portion || '').trim(),
           color: item.color || catColorMap.get(cat.toLowerCase()) || '#2563eb',
           selected: true,
+          variants: itemVariants,
         });
       }
 
@@ -320,6 +425,31 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
 
   function removeItem(id: string) {
     setScannedItems((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  function splitItemVariants(id: string) {
+    setScannedItems((prev) => {
+      const next: ScannedMenuItem[] = [];
+      for (const item of prev) {
+        if (item.id === id && item.variants && item.variants.length > 0) {
+          for (let idx = 0; idx < item.variants.length; idx++) {
+            const v = item.variants[idx];
+            next.push({
+              id: `${item.id}_split_${idx}`,
+              name: `${item.name} (${v.name})`,
+              category: item.category,
+              price: v.price,
+              description: item.description,
+              color: item.color,
+              selected: item.selected,
+            });
+          }
+        } else {
+          next.push(item);
+        }
+      }
+      return next;
+    });
   }
 
   function selectAll(val: boolean) {
@@ -361,6 +491,7 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
             price: Math.max(0, Number(item.price) || 0),
             description: item.description.trim(),
             color: item.color,
+            variants: item.variants && item.variants.length > 0 ? item.variants : undefined,
           })),
         });
       }
@@ -545,6 +676,50 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
                   />
                 </div>
 
+                {/* Portion Format Switcher for Direct Scan */}
+                <div
+                  style={{
+                    background: 'var(--panel-2)',
+                    borderRadius: '12px',
+                    padding: '10px 14px',
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#f8fafc' }}>
+                      Portion Sizes (Quarter / Half / Full)
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--muted)' }}>
+                      How multi-size dishes should appear in POS buttons:
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      className={`btn sm-btn ${groupPortions ? 'primary' : 'ghost'}`}
+                      onClick={() => setGroupPortions(true)}
+                      style={{ fontSize: '0.76rem', padding: '4px 10px', borderRadius: 20 }}
+                      title="Groups into 1 button with fast 1-tap chips"
+                    >
+                      🔘 Group into 1 Button
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn sm-btn ${!groupPortions ? 'primary' : 'ghost'}`}
+                      onClick={() => setGroupPortions(false)}
+                      style={{ fontSize: '0.76rem', padding: '4px 10px', borderRadius: 20 }}
+                      title="Creates separate standalone buttons"
+                    >
+                      ⚪ Separate Flat Items
+                    </button>
+                  </div>
+                </div>
+
                 <div
                   style={{
                     background: 'var(--panel-2)',
@@ -568,6 +743,50 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
             {/* TAB B: AI Prompt & Paste JSON */}
             {inputTab === 'prompt' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* Portion Format Option */}
+                <div
+                  style={{
+                    background: 'var(--panel-2)',
+                    borderRadius: '12px',
+                    padding: '10px 14px',
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#f8fafc' }}>
+                      Portion Sizes (Quarter / Half / Full)
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--muted)' }}>
+                      Select how AI should structure multi-size dishes:
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      className={`btn sm-btn ${groupPortions ? 'primary' : 'ghost'}`}
+                      onClick={() => setGroupPortions(true)}
+                      style={{ fontSize: '0.76rem', padding: '4px 10px', borderRadius: 20 }}
+                      title="1 button with stacked Quarter/Half/Full chips on POS"
+                    >
+                      🔘 Group Portions (Recommended)
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn sm-btn ${!groupPortions ? 'primary' : 'ghost'}`}
+                      onClick={() => setGroupPortions(false)}
+                      style={{ fontSize: '0.76rem', padding: '4px 10px', borderRadius: 20 }}
+                      title="Separate standalone buttons"
+                    >
+                      ⚪ Flat Standalone Items
+                    </button>
+                  </div>
+                </div>
+
                 {/* Step 1: Copy AI Prompt */}
                 <div
                   style={{
@@ -615,7 +834,7 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
                       border: '1px solid rgba(56, 189, 248, 0.2)',
                     }}
                   >
-                    {AI_MENU_PROMPT}
+                    {groupPortions ? AI_MENU_PROMPT_GROUPED : AI_MENU_PROMPT_FLAT}
                   </div>
                 </div>
 
@@ -867,7 +1086,7 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
                   <span style={{ width: 18, flexShrink: 0 }} />
                   <span style={{ flex: '2 1 140px', minWidth: '130px' }}>Item Name</span>
                   <span style={{ flex: '1.2 1 95px', minWidth: '90px' }}>Category</span>
-                  <span style={{ flex: '0 0 95px', minWidth: '95px' }}>Price (₹)</span>
+                  <span style={{ flex: '0 0 115px', minWidth: '115px' }}>Price (₹)</span>
                   <span style={{ flex: '1.5 1 120px', minWidth: '100px' }}>Portion / Desc</span>
                   <span style={{ width: 28, flexShrink: 0 }} />
                 </div>
@@ -892,23 +1111,61 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
                     />
 
                     {/* Name */}
-                    <input
-                      type="text"
-                      value={item.name}
-                      onChange={(e) => updateItemField(item.id, 'name', e.target.value)}
-                      placeholder="Item Name"
-                      style={{
-                        flex: '2 1 140px',
-                        minWidth: '130px',
-                        background: 'var(--panel)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        padding: '6px 10px',
-                        color: '#fff',
-                        fontSize: '0.85rem',
-                        fontWeight: 600,
-                      }}
-                    />
+                    <div style={{ flex: '2 1 140px', minWidth: '130px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <input
+                        type="text"
+                        value={item.name}
+                        onChange={(e) => updateItemField(item.id, 'name', e.target.value)}
+                        placeholder="Item Name"
+                        style={{
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          background: 'var(--panel)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          padding: '6px 10px',
+                          color: '#fff',
+                          fontSize: '0.85rem',
+                          fontWeight: 600,
+                        }}
+                      />
+                      {item.variants && item.variants.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                          {item.variants.map((v) => (
+                            <span
+                              key={v.id || v.name}
+                              style={{
+                                fontSize: '0.68rem',
+                                background: 'rgba(56, 189, 248, 0.12)',
+                                color: '#38bdf8',
+                                border: '1px solid rgba(56, 189, 248, 0.25)',
+                                padding: '1px 5px',
+                                borderRadius: 4,
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {v.name}: ₹{v.price}
+                            </span>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => splitItemVariants(item.id)}
+                            style={{
+                              background: 'transparent',
+                              border: '1px dashed rgba(255, 255, 255, 0.25)',
+                              color: '#cbd5e1',
+                              borderRadius: 4,
+                              fontSize: '0.65rem',
+                              padding: '1px 5px',
+                              cursor: 'pointer',
+                            }}
+                            title="Split this multi-size dish into separate buttons"
+                          >
+                            🔀 Split into flat buttons
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Category */}
                     <input
@@ -929,28 +1186,50 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
                     />
 
                     {/* Price */}
-                    <div style={{ display: 'flex', alignItems: 'center', flex: '0 0 95px', minWidth: '95px', position: 'relative' }}>
-                      <span style={{ position: 'absolute', left: 8, color: '#94a3b8', fontSize: '0.85rem', pointerEvents: 'none' }}>₹</span>
-                      <input
-                        type="number"
-                        className="clean-number"
-                        value={item.price}
-                        onChange={(e) => updateItemField(item.id, 'price', e.target.value)}
-                        placeholder="0"
+                    {item.variants && item.variants.length > 0 ? (
+                      <div
                         style={{
-                          width: '100%',
-                          minWidth: '95px',
-                          boxSizing: 'border-box',
-                          background: 'var(--panel)',
-                          border: '1px solid var(--border)',
+                          flex: '0 0 115px',
+                          minWidth: '115px',
+                          background: 'rgba(56, 189, 248, 0.08)',
+                          border: '1px solid rgba(56, 189, 248, 0.25)',
                           borderRadius: 8,
-                          padding: '6px 6px 6px 20px',
-                          color: '#22c55e',
+                          padding: '6px 6px',
+                          color: '#38bdf8',
+                          fontSize: '0.78rem',
                           fontWeight: 700,
-                          fontSize: '0.9rem',
+                          textAlign: 'center',
+                          whiteSpace: 'nowrap',
+                          boxSizing: 'border-box',
                         }}
-                      />
-                    </div>
+                        title={item.variants.map((v) => `${v.name}: ₹${v.price}`).join(' • ')}
+                      >
+                        {item.variants.length} sizes (₹{item.variants[0]?.price}–₹{item.variants[item.variants.length - 1]?.price})
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', flex: '0 0 115px', minWidth: '115px', position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: 8, color: '#94a3b8', fontSize: '0.85rem', pointerEvents: 'none', zIndex: 1 }}>₹</span>
+                        <input
+                          type="number"
+                          className="clean-number"
+                          value={item.price === 0 ? '' : item.price}
+                          onChange={(e) => updateItemField(item.id, 'price', e.target.value)}
+                          placeholder="0"
+                          style={{
+                            width: '100%',
+                            minWidth: '115px',
+                            boxSizing: 'border-box',
+                            background: 'var(--panel)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 8,
+                            padding: '6px 8px 6px 22px',
+                            color: '#22c55e',
+                            fontWeight: 700,
+                            fontSize: '0.9rem',
+                          }}
+                        />
+                      </div>
+                    )}
 
                     {/* Description */}
                     <input

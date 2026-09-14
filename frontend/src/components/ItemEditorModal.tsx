@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Item } from '../types';
+import type { Item, ItemVariant } from '../types';
 import { ITEM_COLORS, CLASSIC_ITEM_COLORS, EXTENDED_ITEM_COLORS } from '../colors';
 
 interface Props {
@@ -8,7 +8,15 @@ interface Props {
   suggestedColor?: string;
   existingCategories?: string[];
   onClose: () => void;
-  onSave: (data: { name: string; price: number; color: string; category: string; description?: string; stockQuantity?: number | null }) => void;
+  onSave: (data: {
+    name: string;
+    price: number;
+    color: string;
+    category: string;
+    description?: string;
+    stockQuantity?: number | null;
+    variants?: ItemVariant[] | null;
+  }) => void;
   onDelete?: () => void;
 }
 
@@ -27,6 +35,10 @@ export default function ItemEditorModal({
   const [category, setCategory] = useState(initial?.category ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [stockQuantity, setStockQuantity] = useState(initial?.stockQuantity !== null && initial?.stockQuantity !== undefined ? String(initial.stockQuantity) : '');
+  const [variants, setVariants] = useState<ItemVariant[]>(() => {
+    return Array.isArray(initial?.variants) ? [...initial.variants] : [];
+  });
+  const [showVariantsSection, setShowVariantsSection] = useState(() => (initial?.variants?.length ?? 0) > 0);
 
   const registeredCategories = useMemo(() => {
     const list = (existingCategories || [])
@@ -49,13 +61,27 @@ export default function ItemEditorModal({
       }
     }
 
+    const cleanVariants = variants
+      .filter((v) => v.name.trim())
+      .map((v, i) => ({
+        id: v.id || `v_${i + 1}`,
+        name: v.name.trim(),
+        price: Math.max(0, Number(v.price) || 0),
+      }));
+
+    let finalPrice = Number(price) || 0;
+    if (cleanVariants.length > 0 && finalPrice === 0) {
+      finalPrice = cleanVariants[0].price;
+    }
+
     onSave({
       name: name.trim(),
-      price: Number(price) || 0,
+      price: finalPrice,
       color,
       category: finalCategory,
       description: description.trim(),
       stockQuantity: stockQuantity === '' ? null : Number(stockQuantity),
+      variants: cleanVariants.length > 0 ? cleanVariants : null,
     });
   }
 
@@ -70,8 +96,155 @@ export default function ItemEditorModal({
         </div>
 
         <div className="field">
-          <label>Price (₹)</label>
+          <label>{variants.length > 0 ? 'Base / Starting Price (₹)' : 'Price (₹)'}</label>
           <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" />
+        </div>
+
+        {/* Optional Portion Sizes / Variants Section */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="btn ghost sm-btn"
+              onClick={() => setShowVariantsSection((prev) => !prev)}
+              style={{
+                fontSize: '0.8rem',
+                padding: '4px 10px',
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                borderColor: variants.length > 0 ? '#38bdf8' : 'var(--border)',
+                color: variants.length > 0 ? '#38bdf8' : 'var(--text)',
+              }}
+            >
+              <span>{showVariantsSection ? '▾' : '▸'}</span>
+              <span>➕ Portion Sizes / Variants ({variants.length})</span>
+            </button>
+
+            {variants.length > 0 && !showVariantsSection && (
+              <span style={{ fontSize: '0.75rem', color: '#22c55e' }}>
+                {variants.map((v) => `${v.name} ₹${v.price}`).join(' • ')}
+              </span>
+            )}
+          </div>
+
+          {showVariantsSection && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: '10px 12px',
+                background: 'var(--panel-2)',
+                borderRadius: 10,
+                border: '1px solid var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                <span style={{ fontSize: '0.74rem', color: 'var(--muted)' }}>
+                  Quick presets:
+                </span>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn ghost sm-btn"
+                    onClick={() => {
+                      const p = Number(price) || 0;
+                      setVariants([
+                        { id: 'v1', name: 'Half', price: p ? Math.round(p * 0.6) : 0 },
+                        { id: 'v2', name: 'Full', price: p || 0 },
+                      ]);
+                    }}
+                    style={{ fontSize: '0.7rem', padding: '2px 6px' }}
+                  >
+                    Half / Full
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost sm-btn"
+                    onClick={() => {
+                      const p = Number(price) || 0;
+                      setVariants([
+                        { id: 'v1', name: 'Quarter', price: p ? Math.round(p * 0.35) : 0 },
+                        { id: 'v2', name: 'Half', price: p ? Math.round(p * 0.6) : 0 },
+                        { id: 'v3', name: 'Full', price: p || 0 },
+                      ]);
+                    }}
+                    style={{ fontSize: '0.7rem', padding: '2px 6px' }}
+                  >
+                    Qtr / Half / Full
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost sm-btn"
+                    onClick={() => {
+                      setVariants([
+                        { id: 'v1', name: '250g', price: 0 },
+                        { id: 'v2', name: '500g', price: 0 },
+                        { id: 'v3', name: '1kg', price: 0 },
+                      ]);
+                    }}
+                    style={{ fontSize: '0.7rem', padding: '2px 6px' }}
+                  >
+                    250g / 500g / 1kg
+                  </button>
+                </div>
+              </div>
+
+              {/* Variants Rows */}
+              {variants.map((v, idx) => (
+                <div key={v.id || idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={v.name}
+                    placeholder="e.g. Half, 500g"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setVariants((prev) => prev.map((item, i) => (i === idx ? { ...item, name: val } : item)));
+                    }}
+                    style={{ flex: 1.2, padding: '6px 8px', fontSize: '0.85rem' }}
+                  />
+                  <div style={{ position: 'relative', width: '100px' }}>
+                    <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', fontSize: '0.85rem' }}>₹</span>
+                    <input
+                      type="number"
+                      value={v.price === 0 ? '' : v.price}
+                      placeholder="0"
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value) || 0);
+                        setVariants((prev) => prev.map((item, i) => (i === idx ? { ...item, price: val } : item)));
+                      }}
+                      style={{ width: '100%', padding: '6px 6px 6px 20px', fontSize: '0.85rem', fontWeight: 700, color: '#86efac' }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setVariants((prev) => prev.filter((_, i) => i !== idx))}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
+                    title="Delete portion"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                className="btn ghost sm-btn"
+                onClick={() => {
+                  setVariants((prev) => [
+                    ...prev,
+                    { id: `v_${prev.length + 1}_${Date.now()}`, name: '', price: 0 },
+                  ]);
+                }}
+                style={{ fontSize: '0.75rem', alignSelf: 'flex-start', marginTop: 4 }}
+              >
+                ➕ Add Another Portion
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="field">

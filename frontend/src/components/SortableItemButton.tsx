@@ -1,12 +1,12 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Item } from '../types';
+import type { Item, ItemVariant } from '../types';
 
 interface Props {
   item: Item;
   qty: number;
   locked: boolean;
-  onTap: (item: Item) => void;
+  onTap: (item: Item, variant?: ItemVariant) => void;
   onDecrement?: (item: Item) => void;
   onEdit: (item: Item) => void;
 }
@@ -14,6 +14,7 @@ interface Props {
 /**
  * A single item button.
  * - When the layout is LOCKED, tapping adds the item to the cart.
+ *   (If it has variants, tapping any portion chip bills that variant in 1 tap).
  * - When UNLOCKED, the button becomes draggable to rearrange, and a small
  *   edit dot lets you edit/delete the item.
  */
@@ -23,6 +24,7 @@ export default function SortableItemButton({ item, qty, locked, onTap, onDecreme
     disabled: locked,
   });
 
+  const hasVariants = Array.isArray(item.variants) && item.variants.length > 0;
   const isOutOfStock = item.stockQuantity !== null && item.stockQuantity !== undefined && item.stockQuantity <= 0;
   const isLowStock = item.stockQuantity !== null && item.stockQuantity !== undefined && item.stockQuantity > 0 && item.stockQuantity <= 5;
 
@@ -42,11 +44,17 @@ export default function SortableItemButton({ item, qty, locked, onTap, onDecreme
       type="button"
       ref={setNodeRef}
       style={style}
-      className={`item-btn ${isDragging ? 'dragging' : ''} ${isOutOfStock ? 'out-of-stock' : ''}`}
+      className={`item-btn ${isDragging ? 'dragging' : ''} ${isOutOfStock ? 'out-of-stock' : ''} ${hasVariants ? 'has-variants' : ''}`}
       {...(!locked ? attributes : {})}
       {...(!locked ? listeners : {})}
       onClick={() => {
-        if (locked && !isOutOfStock) onTap(item);
+        if (locked && !isOutOfStock) {
+          if (hasVariants && item.variants && item.variants.length > 0) {
+            onTap(item, item.variants[0]);
+          } else {
+            onTap(item);
+          }
+        }
       }}
     >
       {qty > 0 && (
@@ -85,42 +93,98 @@ export default function SortableItemButton({ item, qty, locked, onTap, onDecreme
 
       <span className="name">{item.name}</span>
 
-      <div className="item-btn-footer" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', width: '100%' }}>
-          <span
-            className="price"
-            style={{
-              textDecoration: isOutOfStock ? 'line-through' : undefined,
-              opacity: isOutOfStock ? 0.6 : 0.95,
-              fontSize: isOutOfStock ? '13px' : undefined,
-            }}
-          >
-            ₹{item.price % 1 === 0 ? item.price.toFixed(0) : item.price.toFixed(2)}
-          </span>
-          {!isOutOfStock && isLowStock && (
-            <span className="stock-badge low">⚠️ {item.stockQuantity}</span>
-          )}
-          {!isOutOfStock && !isLowStock && item.stockQuantity !== null && item.stockQuantity !== undefined && (
-            <span className="stock-badge normal">{item.stockQuantity}</span>
+      {hasVariants ? (
+        <div
+          className="variant-chips-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: 4,
+            marginTop: 6,
+            width: '100%',
+          }}
+        >
+          {item.variants!.map((v, idx) => {
+            const isOddTotal = item.variants!.length % 2 === 1;
+            const isLastOdd = isOddTotal && idx === item.variants!.length - 1;
+            return (
+              <div
+                key={v.id || idx}
+                role="button"
+                tabIndex={0}
+                className="variant-chip-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (locked && !isOutOfStock) onTap(item, v);
+                }}
+                onPointerDown={(e) => {
+                  if (locked) e.stopPropagation();
+                }}
+                style={{
+                  gridColumn: isLastOdd ? 'span 2' : 'auto',
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  borderRadius: 6,
+                  padding: '4px 3px',
+                  color: '#ffffff',
+                  display: 'flex',
+                  flexDirection: isLastOdd ? 'row' : 'column',
+                  gap: isLastOdd ? 6 : 1,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: locked ? (isOutOfStock ? 'not-allowed' : 'pointer') : 'grab',
+                  minHeight: 32,
+                  boxSizing: 'border-box',
+                }}
+              >
+                <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+                  {v.name}
+                </span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#86efac' }}>
+                  ₹{v.price % 1 === 0 ? v.price.toFixed(0) : v.price.toFixed(2)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="item-btn-footer" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', width: '100%' }}>
+            <span
+              className="price"
+              style={{
+                textDecoration: isOutOfStock ? 'line-through' : undefined,
+                opacity: isOutOfStock ? 0.6 : 0.95,
+                fontSize: isOutOfStock ? '13px' : undefined,
+              }}
+            >
+              ₹{item.price % 1 === 0 ? item.price.toFixed(0) : item.price.toFixed(2)}
+            </span>
+            {!isOutOfStock && isLowStock && (
+              <span className="stock-badge low">⚠️ {item.stockQuantity}</span>
+            )}
+            {!isOutOfStock && !isLowStock && item.stockQuantity !== null && item.stockQuantity !== undefined && (
+              <span className="stock-badge normal">{item.stockQuantity}</span>
+            )}
+          </div>
+
+          {isOutOfStock && (
+            <div
+              className="stock-badge out"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                textAlign: 'center',
+                padding: '2px 4px',
+                fontSize: '9.5px',
+                letterSpacing: '0.4px',
+              }}
+            >
+              Out of Stock
+            </div>
           )}
         </div>
-
-        {isOutOfStock && (
-          <div
-            className="stock-badge out"
-            style={{
-              width: '100%',
-              justifyContent: 'center',
-              textAlign: 'center',
-              padding: '2px 4px',
-              fontSize: '9.5px',
-              letterSpacing: '0.4px',
-            }}
-          >
-            Out of Stock
-          </div>
-        )}
-      </div>
+      )}
     </button>
   );
 }

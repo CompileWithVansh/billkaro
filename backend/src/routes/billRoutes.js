@@ -196,12 +196,14 @@ router.post(
 
     const userId = Number(req.userId);
 
-    // Sanitize item names, categories, and portion descriptions to prevent Stored XSS
+    // Sanitize item names, categories, portion descriptions, and variants to prevent Stored XSS
     const cleanItems = items.map((l) => ({
       ...l,
       name: sanitizeText(l.name) || 'Item',
       category: l.category ? sanitizeText(l.category) : undefined,
       description: l.description ? sanitizeText(l.description) : undefined,
+      variantId: l.variantId ? sanitizeText(String(l.variantId)) : undefined,
+      variantName: l.variantName ? sanitizeText(String(l.variantName)) : undefined,
       price: typeof l.price === 'number' ? l.price : Number(l.price) || 0,
       qty: typeof l.qty === 'number' ? l.qty : Number(l.qty) || 1,
     }));
@@ -234,10 +236,30 @@ router.post(
       // If line is linked to catalog itemId, verify price matches database (1 rupee tolerance for float precision)
       if (line.itemId) {
         const dbItem = dbItemMap.get(Number(line.itemId));
-        if (dbItem && Math.abs(linePrice - Number(dbItem.price)) > 1) {
-          return res.status(400).json({
-            error: `Price mismatch for ${dbItem.name}. Expected ₹${dbItem.price}, got ₹${linePrice}`,
-          });
+        if (dbItem) {
+          let expectedPrice = Number(dbItem.price);
+          const rawVariants = dbItem.variants_json;
+          let itemVariants = [];
+          if (Array.isArray(rawVariants)) {
+            itemVariants = rawVariants;
+          } else if (typeof rawVariants === 'string') {
+            try { itemVariants = JSON.parse(rawVariants); } catch {}
+          }
+
+          if (Array.isArray(itemVariants) && itemVariants.length > 0) {
+            const matchedVariant = line.variantId
+              ? itemVariants.find((v) => String(v.id) === String(line.variantId))
+              : itemVariants.find((v) => Math.abs(linePrice - Number(v.price)) <= 1);
+            if (matchedVariant) {
+              expectedPrice = Number(matchedVariant.price);
+            }
+          }
+
+          if (Math.abs(linePrice - expectedPrice) > 1) {
+            return res.status(400).json({
+              error: `Price mismatch for ${dbItem.name}. Expected ₹${expectedPrice}, got ₹${linePrice}`,
+            });
+          }
         }
       }
     }

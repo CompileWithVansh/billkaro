@@ -717,3 +717,51 @@ test('DeductStock Guard - Bypasses Connection Checkout on Empty / Custom Items',
   assert.equal(lines[0].itemId, 8);
   assert.equal(lines[0].qty, 2);
 });
+
+test('Variant Price Verification - Supports Multiple Portion Tiers and Blocks Tampering', () => {
+  const dbItem = {
+    id: 42,
+    name: 'Tawa Chicken',
+    price: 130, // base/qtr
+    variants_json: [
+      { id: 'v1', name: 'Quarter', price: 130 },
+      { id: 'v2', name: 'Half', price: 260 },
+      { id: 'v3', name: 'Full', price: 520 },
+    ],
+  };
+
+  const dbItemMap = new Map([[42, dbItem]]);
+
+  function verifyLinePrice(line) {
+    const item = dbItemMap.get(line.itemId);
+    if (!item) return { ok: true };
+    let expectedPrice = Number(item.price);
+    const variants = item.variants_json || [];
+    if (variants.length > 0) {
+      const matched = line.variantId
+        ? variants.find((v) => String(v.id) === String(line.variantId))
+        : variants.find((v) => Math.abs(line.price - Number(v.price)) <= 1);
+      if (matched) expectedPrice = Number(matched.price);
+    }
+    if (Math.abs(line.price - expectedPrice) > 1) {
+      return { error: `Price mismatch for ${item.name}. Expected ₹${expectedPrice}, got ₹${line.price}` };
+    }
+    return { ok: true, expectedPrice };
+  }
+
+  // 1. Legitimate Quarter
+  assert.equal(verifyLinePrice({ itemId: 42, variantId: 'v1', price: 130 }).ok, true);
+
+  // 2. Legitimate Half
+  assert.equal(verifyLinePrice({ itemId: 42, variantId: 'v2', price: 260 }).ok, true);
+
+  // 3. Legitimate Full
+  assert.equal(verifyLinePrice({ itemId: 42, variantId: 'v3', price: 520 }).ok, true);
+
+  // 4. Tampered Half (cashier sends ₹10 instead of ₹260)
+  const tampered = verifyLinePrice({ itemId: 42, variantId: 'v2', price: 10 });
+  assert.equal(tampered.ok, undefined);
+  assert.match(tampered.error, /Price mismatch for Tawa Chicken/);
+  assert.match(tampered.error, /Expected ₹260, got ₹10/);
+});
+

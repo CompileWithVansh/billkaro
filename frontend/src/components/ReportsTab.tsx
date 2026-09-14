@@ -264,28 +264,103 @@ export default function ReportsTab({ user, items }: Props) {
     .filter((b) => b.status === 'unpaid')
     .reduce((sum, b) => sum + Number(b.total || 0), 0);
 
-  // Top Selling Items Analytics
+  // Top Selling Items Analytics with Portion Variant Rollup
   const topSellingItems = useMemo(() => {
-    const itemMap = new Map<string, { name: string; category?: string; qty: number; revenue: number }>();
+    const catalogItemMap = new Map<string, Item>();
+    if (items && items.length > 0) {
+      items.forEach((it) => {
+        if (it.id) catalogItemMap.set(String(it.id), it);
+        catalogItemMap.set(it.name.trim().toLowerCase(), it);
+      });
+    }
+
+    const dishMap = new Map<
+      string,
+      {
+        name: string;
+        category?: string;
+        qty: number;
+        revenue: number;
+        variantsMap: Map<string, { name: string; qty: number; revenue: number }>;
+      }
+    >();
+
     periodBills.forEach((b) => {
-      (b.items || []).forEach((item) => {
-        const key = item.name.trim().toLowerCase();
-        const existing = itemMap.get(key) || {
-          name: item.name,
-          category: item.category,
+      (b.items || []).forEach((item: any) => {
+        const rawName = (item.name || '').trim();
+        const qty = Number(item.qty || 1);
+        const rev = (Number(item.price) || 0) * qty;
+
+        let parentName = rawName;
+        let variantName: string | undefined = item.variantName?.trim();
+
+        // Check catalog item
+        const catalogItem = item.itemId ? catalogItemMap.get(String(item.itemId)) : undefined;
+
+        if (variantName) {
+          parentName = rawName.replace(new RegExp(`\\s*\\(${variantName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)$`, 'i'), '').trim();
+        } else if (catalogItem && catalogItem.variants && catalogItem.variants.length > 0) {
+          parentName = catalogItem.name;
+          const matched = catalogItem.variants.find(
+            (v) =>
+              (item.variantId && String(v.id) === String(item.variantId)) ||
+              rawName.toLowerCase().endsWith(`(${v.name.toLowerCase()})`) ||
+              Math.abs(Number(v.price) - Number(item.price)) <= 1
+          );
+          if (matched) {
+            variantName = matched.name;
+          }
+        } else {
+          // Common Indian restaurant portion patterns: Quarter, Half, Full, 250g, 500g, 1kg, etc.
+          const match = rawName.match(/^(.*?)\s*\((Quarter|Qtr|Half|Full|Small|Medium|Large|Regular|Single|Double|Triple|\d+\s*(?:pc|pcs|gm|g|kg|ml|l|piece|pieces))\)$/i);
+          if (match) {
+            parentName = match[1].trim();
+            variantName = match[2].trim();
+          }
+        }
+
+        const key = parentName.toLowerCase();
+        const existing = dishMap.get(key) || {
+          name: parentName,
+          category: item.category || catalogItem?.category,
           qty: 0,
           revenue: 0,
+          variantsMap: new Map(),
         };
-        existing.qty += Number(item.qty || 1);
-        existing.revenue += (Number(item.price) || 0) * (Number(item.qty) || 1);
-        if (item.category && !existing.category) existing.category = item.category;
-        itemMap.set(key, existing);
+
+        existing.qty += qty;
+        existing.revenue += rev;
+        if (!existing.category && (item.category || catalogItem?.category)) {
+          existing.category = item.category || catalogItem?.category;
+        }
+
+        if (variantName) {
+          const vKey = variantName.toLowerCase();
+          const existingV = existing.variantsMap.get(vKey) || {
+            name: variantName,
+            qty: 0,
+            revenue: 0,
+          };
+          existingV.qty += qty;
+          existingV.revenue += rev;
+          existing.variantsMap.set(vKey, existingV);
+        }
+
+        dishMap.set(key, existing);
       });
     });
-    const list = Array.from(itemMap.values());
+
+    const list = Array.from(dishMap.values()).map((d) => ({
+      name: d.name,
+      category: d.category,
+      qty: d.qty,
+      revenue: d.revenue,
+      variants: Array.from(d.variantsMap.values()).sort((a, b) => b.qty - a.qty),
+    }));
+
     list.sort((a, b) => b.qty - a.qty || b.revenue - a.revenue);
     return list;
-  }, [periodBills]);
+  }, [periodBills, items]);
 
   const totalUnitsSold = useMemo(() => {
     return topSellingItems.reduce((acc, item) => acc + item.qty, 0);
@@ -295,7 +370,10 @@ export default function ReportsTab({ user, items }: Props) {
     if (!dishSearch.trim()) return topSellingItems;
     const q = dishSearch.toLowerCase();
     return topSellingItems.filter(
-      (i) => i.name.toLowerCase().includes(q) || (i.category && i.category.toLowerCase().includes(q))
+      (i) =>
+        i.name.toLowerCase().includes(q) ||
+        (i.category && i.category.toLowerCase().includes(q)) ||
+        (i.variants && i.variants.some((v) => v.name.toLowerCase().includes(q)))
     );
   }, [topSellingItems, dishSearch]);
 
@@ -774,7 +852,7 @@ export default function ReportsTab({ user, items }: Props) {
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0, flex: 1 }}>
                             <span
                               style={{
                                 fontSize: '0.95rem',
@@ -782,41 +860,67 @@ export default function ReportsTab({ user, items }: Props) {
                                 flexShrink: 0,
                                 fontWeight: 700,
                                 color: rank > 3 ? '#94a3b8' : 'inherit',
+                                marginTop: 1,
                               }}
                             >
                               {medal}
                             </span>
-                            <span
-                              style={{
-                                fontWeight: 700,
-                                fontSize: '0.9rem',
-                                color: '#f8fafc',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                              title={item.name}
-                            >
-                              {item.name}
-                            </span>
-                            {item.category && (
-                              <span
-                                style={{
-                                  fontSize: '0.7rem',
-                                  background: 'rgba(255,255,255,0.06)',
-                                  padding: '1px 6px',
-                                  borderRadius: 4,
-                                  color: '#94a3b8',
-                                  flexShrink: 0,
-                                  maxWidth: 90,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {item.category}
-                              </span>
-                            )}
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <span
+                                  style={{
+                                    fontWeight: 700,
+                                    fontSize: '0.9rem',
+                                    color: '#f8fafc',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                  title={item.name}
+                                >
+                                  {item.name}
+                                </span>
+                                {item.category && (
+                                  <span
+                                    style={{
+                                      fontSize: '0.7rem',
+                                      background: 'rgba(255,255,255,0.06)',
+                                      padding: '1px 6px',
+                                      borderRadius: 4,
+                                      color: '#94a3b8',
+                                      flexShrink: 0,
+                                      maxWidth: 90,
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {item.category}
+                                  </span>
+                                )}
+                              </div>
+                              {item.variants && item.variants.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                                  {item.variants.map((v) => (
+                                    <span
+                                      key={v.name}
+                                      style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 600,
+                                        background: 'rgba(56, 189, 248, 0.12)',
+                                        color: '#38bdf8',
+                                        border: '1px solid rgba(56, 189, 248, 0.25)',
+                                        padding: '1px 6px',
+                                        borderRadius: 4,
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      {v.qty} × {v.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div style={{ textAlign: 'right', flexShrink: 0 }}>
                             <span style={{ fontWeight: 800, color: '#38bdf8', fontSize: '0.9rem' }}>{item.qty} sold</span>

@@ -20,7 +20,7 @@ import { toBlob } from 'html-to-image';
 
 import { api, getToken } from '../api';
 import { useAuth } from '../auth/AuthContext';
-import { getItemDesc, formatInvoiceNumber, type Item, type Bill, type CartLine } from '../types';
+import { getItemDesc, formatInvoiceNumber, type Item, type ItemVariant, type Bill, type CartLine } from '../types';
 import { ReceiptCard } from '../components/ReceiptCard';
 
 function playAudioChime() {
@@ -550,17 +550,24 @@ export default function PosPage() {
     setBills((prev) => prev.map((b) => (b.id === activeBill.id ? updater(b) : b)));
   }
 
-  function addToCart(item: Item) {
+  function addToCart(item: Item, variant?: ItemVariant) {
     if (searchOpen) {
       setSearchOpen(false);
       setItemSearch('');
     }
+    const linePrice = variant ? variant.price : item.price;
+    const lineName = variant ? `${item.name} (${variant.name})` : item.name;
+    const vId = variant ? variant.id : undefined;
+    const vName = variant ? variant.name : undefined;
+
     updateActiveBill((b) => {
-      const existing = b.lines.find((l) => l.itemId === item.id);
+      const existing = b.lines.find(
+        (l) => l.itemId === item.id && (l.variantId === vId || (!l.variantId && !vId))
+      );
       let lines: CartLine[];
       if (existing) {
         lines = b.lines.map((l) =>
-          l.itemId === item.id
+          l.lineId === existing.lineId
             ? {
                 ...l,
                 qty: l.qty + 1,
@@ -575,11 +582,13 @@ export default function PosPage() {
           {
             lineId: makeLineId(),
             itemId: item.id,
-            name: item.name,
-            price: item.price,
+            name: lineName,
+            price: linePrice,
             qty: 1,
             category: item.category,
             description: item.description || undefined,
+            variantId: vId,
+            variantName: vName,
           },
         ];
       }
@@ -589,15 +598,17 @@ export default function PosPage() {
 
   function removeFromCart(item: Item) {
     updateActiveBill((b) => {
-      const line = b.lines.find((l) => l.itemId === item.id);
-      if (!line) return b;
+      const matchingLines = b.lines.filter((l) => l.itemId === item.id);
+      if (matchingLines.length === 0) return b;
+      // Decrement the last matching line
+      const line = matchingLines[matchingLines.length - 1];
       let lines: CartLine[];
       if (line.qty > 1) {
         lines = b.lines.map((l) =>
-          l.itemId === item.id ? { ...l, qty: l.qty - 1 } : l
+          l.lineId === line.lineId ? { ...l, qty: l.qty - 1 } : l
         );
       } else {
-        lines = b.lines.filter((l) => l.itemId !== item.id);
+        lines = b.lines.filter((l) => l.lineId !== line.lineId);
       }
       return { ...b, lines };
     });
@@ -685,7 +696,15 @@ export default function PosPage() {
     setShowEditor(true);
   }
 
-  async function saveItem(data: { name: string; price: number; color: string; category: string; description?: string; stockQuantity?: number | null }) {
+  async function saveItem(data: {
+    name: string;
+    price: number;
+    color: string;
+    category: string;
+    description?: string;
+    stockQuantity?: number | null;
+    variants?: ItemVariant[] | null;
+  }) {
     if (editorItem) {
       const res = await api.put(`/items/${editorItem.id}`, data);
       setItems((prev) => prev.map((i) => (i.id === editorItem.id ? res.data.item : i)));

@@ -11,6 +11,18 @@ router.use(requireUserRole);
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 function mapItem(r) {
+  let variants = undefined;
+  if (r.variants_json) {
+    if (Array.isArray(r.variants_json)) {
+      variants = r.variants_json;
+    } else if (typeof r.variants_json === 'string') {
+      try {
+        const parsed = JSON.parse(r.variants_json);
+        if (Array.isArray(parsed)) variants = parsed;
+      } catch { }
+    }
+  }
+
   return {
     id: r.id,
     name: r.name,
@@ -20,6 +32,7 @@ function mapItem(r) {
     description: r.description || '',
     stockQuantity: r.stock_quantity !== undefined && r.stock_quantity !== null ? Number(r.stock_quantity) : null,
     sortOrder: r.sort_order,
+    variants,
   };
 }
 
@@ -28,7 +41,7 @@ export function parseAndValidateItem(body, isUpdate = false) {
     return { error: 'Request body must be a JSON object' };
   }
 
-  const { name, price, color, category, description, stockQuantity } = body;
+  const { name, price, color, category, description, stockQuantity, variants } = body;
   const value = {};
 
   // For updates, at least one recognized field must be provided
@@ -93,6 +106,37 @@ export function parseAndValidateItem(body, isUpdate = false) {
       cleanStock = s;
     }
     value.stockQuantity = cleanStock;
+  }
+
+  // Variants validation: optional array of { id, name, price }
+  if (!isUpdate || 'variants' in body) {
+    let cleanVariants = null;
+    if (Array.isArray(variants) && variants.length > 0) {
+      if (variants.length > 10) {
+        return { error: 'An item can have at most 10 portion variants' };
+      }
+      cleanVariants = [];
+      for (let idx = 0; idx < variants.length; idx++) {
+        const v = variants[idx];
+        if (!v || typeof v !== 'object') continue;
+        const vName = sanitizeText(v.name);
+        if (!vName || vName.length > 40) {
+          return { error: `Variant #${idx + 1} name must be between 1 and 40 characters` };
+        }
+        const vPrice = typeof v.price === 'number' ? v.price : Number(v.price);
+        if (isNaN(vPrice) || vPrice < 0 || vPrice > 999999) {
+          return { error: `Variant "${vName}" price must be a valid number between 0 and 999,999` };
+        }
+        const vId = v.id && typeof v.id === 'string' ? sanitizeText(v.id) : `v_${idx + 1}_${Date.now()}`;
+        cleanVariants.push({
+          id: vId,
+          name: vName,
+          price: vPrice,
+        });
+      }
+      if (cleanVariants.length === 0) cleanVariants = null;
+    }
+    value.variants = cleanVariants;
   }
 
   return { value };
@@ -171,7 +215,7 @@ router.post(
   express.json({ limit: '15mb' }),
   scanMenuLimiter,
   wrap(async (req, res) => {
-    const { imageBase64, mimeType = 'image/jpeg' } = req.body || {};
+    const { imageBase64, mimeType = 'image/jpeg', groupPortions = false } = req.body || {};
     if (!imageBase64) {
       return res.status(400).json({ error: 'Menu image data is required' });
     }
@@ -192,13 +236,19 @@ router.post(
     // Strip data URL prefix if present
     const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
 
+    const portionRule = groupPortions
+      ? `3. "price": Numeric base price in INR.
+4. "variants": If the dish has multiple portion sizes or tiers (e.g. Half / Full, Quarter / Half / Full, 250g / 500g / 1kg, Small / Medium / Large), do NOT create separate items. Instead, group them in a "variants" array: [{"name": "Half", "price": 130}, {"name": "Full", "price": 260}]. Set "price" to the starting price.
+5. "description": Portion size, ingredients, or short details if present.`
+      : `3. "price": Numeric price in INR (e.g. 150, 90). If portion sizes are listed (e.g. Half 100 / Full 180), create separate items with the portion in the name like "Dal Makhani (Half)" 100 and "Dal Makhani (Full)" 180.
+4. "description": Portion size, ingredients, or short details if present (e.g. "Quarter plate", "Serves 1", "With spicy chutney").`;
+
     const prompt = `You are an expert restaurant and cafe menu digitizer.
 Carefully analyze this menu card image. Extract ALL dishes, drinks, and food items.
 For every item, identify:
 1. "name": The clean dish/item name (e.g. "Cold Coffee", "Veg Grilled Sandwich", "Kalimirch Chicken").
 2. "category": The logical menu section (e.g. "Beverages", "Starters", "Main Course", "Breads", "Desserts", "Snacks").
-3. "price": Numeric price in INR (e.g. 150, 90). If portion sizes are listed (e.g. Half 100 / Full 180), create separate items with the portion in the name like "Dal Makhani (Half)" 100 and "Dal Makhani (Full)" 180.
-4. "description": Portion size, ingredients, or short details if present (e.g. "Quarter plate", "Serves 1", "With spicy chutney").
+${portionRule}
 
 Return strictly a JSON array of objects with no markdown code fences or other text:
 [
@@ -271,12 +321,23 @@ Return strictly a JSON array of objects with no markdown code fences or other te
           catColorMap.set(cat.toLowerCase(), palette[colIdx % palette.length]);
           colIdx++;
         }
+        const cleanVariants = Array.isArray(i.variants) && i.variants.length > 0
+          ? i.variants
+              .map((v, vIdx) => ({
+                id: `v_${vIdx + 1}_${Date.now()}`,
+                name: sanitizeText(v.name || v.portion || ''),
+                price: Math.max(0, Number(v.price) || 0),
+              }))
+              .filter((v) => v.name)
+          : undefined;
+
         return {
           name: i.name.trim(),
           category: cat,
-          price: Math.max(0, Number(i.price) || 0),
+          price: Math.max(0, Number(i.price) || (cleanVariants?.[0]?.price ?? 0)),
           description: (i.description || '').trim(),
           color: catColorMap.get(cat.toLowerCase()),
+          variants: cleanVariants && cleanVariants.length > 0 ? cleanVariants : undefined,
         };
       });
 
@@ -310,6 +371,7 @@ router.post(
         if (Number.isInteger(s) && s >= 0 && s <= 999999) cleanStock = s;
       }
 
+      const cleanVariants = Array.isArray(item.variants) && item.variants.length > 0 ? item.variants : undefined;
       const created = await itemsRepo.create(req.userId, {
         name: cleanName,
         price: cleanPrice,
@@ -317,6 +379,7 @@ router.post(
         category: cleanCategory,
         description: cleanDesc,
         stockQuantity: cleanStock,
+        variants: cleanVariants,
       });
       createdItems.push(created);
     }

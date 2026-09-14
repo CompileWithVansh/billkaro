@@ -118,6 +118,7 @@ export async function initDb() {
 
     ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS stock_quantity INTEGER DEFAULT NULL;
     ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+    ALTER TABLE billkaro_items ADD COLUMN IF NOT EXISTS variants_json JSONB DEFAULT NULL;
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'upi';
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT NULL;
     ALTER TABLE billkaro_bills ADD COLUMN IF NOT EXISTS customer_phone TEXT DEFAULT NULL;
@@ -278,23 +279,26 @@ export const itemsRepo = {
     );
     return rows;
   },
-  async create(userId, { name, price, color, category, description, stockQuantity }) {
+  async create(userId, { name, price, color, category, description, stockQuantity, variants }) {
     const { rows: maxRows } = await getPool().query(
       'SELECT COALESCE(MAX(sort_order), -1) AS m FROM billkaro_items WHERE user_id = $1',
       [Number(userId)]
     );
     const nextOrder = Number(maxRows[0].m) + 1;
     const stock = stockQuantity === '' || stockQuantity === undefined || stockQuantity === null ? null : Number(stockQuantity);
+    const variantsJson = Array.isArray(variants) && variants.length > 0 ? JSON.stringify(variants) : null;
     const { rows } = await getPool().query(
-      `INSERT INTO billkaro_items (user_id, name, price, color, category, description, stock_quantity, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [Number(userId), name, Number(price) || 0, color || '#2563eb', category || '', description || '', stock, nextOrder]
+      `INSERT INTO billkaro_items (user_id, name, price, color, category, description, stock_quantity, sort_order, variants_json)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [Number(userId), name, Number(price) || 0, color || '#2563eb', category || '', description || '', stock, nextOrder, variantsJson]
     );
     return rows[0];
   },
   async update(id, userId, fields) {
     const hasStockUpdate = 'stockQuantity' in fields;
     const stockVal = fields.stockQuantity === '' || fields.stockQuantity === null || fields.stockQuantity === undefined ? null : Number(fields.stockQuantity);
+    const hasVariantsUpdate = 'variants' in fields;
+    const variantsJson = Array.isArray(fields.variants) && fields.variants.length > 0 ? JSON.stringify(fields.variants) : null;
     const { rows } = await getPool().query(
       `UPDATE billkaro_items SET
          name           = COALESCE($1, name),
@@ -302,8 +306,9 @@ export const itemsRepo = {
          color          = COALESCE($3, color),
          category       = COALESCE($4, category),
          description    = COALESCE($5, description),
-         stock_quantity = CASE WHEN $6 THEN $7 ELSE stock_quantity END
-       WHERE id = $8 AND user_id = $9 RETURNING *`,
+         stock_quantity = CASE WHEN $6 THEN $7 ELSE stock_quantity END,
+         variants_json  = CASE WHEN $8 THEN $9::jsonb ELSE variants_json END
+       WHERE id = $10 AND user_id = $11 RETURNING *`,
       [
         fields.name ?? null,
         fields.price == null ? null : Number(fields.price),
@@ -312,6 +317,8 @@ export const itemsRepo = {
         fields.description ?? null,
         hasStockUpdate,
         stockVal,
+        hasVariantsUpdate,
+        variantsJson,
         Number(id),
         Number(userId),
       ]
