@@ -1414,8 +1414,8 @@ export default function PosPage() {
                   </button>
                 )}
 
-                {/* Bottom scroll clearance spacer so categories like Noodles scroll freely above floating buttons */}
-                <div style={{ height: activeBill?.lines.length ? 100 : 30, flexShrink: 0 }} />
+                {/* Bottom scroll clearance spacer so categories scroll freely above floating buttons */}
+                <div style={{ height: activeBill?.lines.length ? 140 : 80, flexShrink: 0 }} />
               </div>
 
               <div className="blinkit-content">
@@ -1442,40 +1442,46 @@ export default function PosPage() {
                     </div>
                   </SortableContext>
                 </DndContext>
+                {/* Mobile bottom clearance so last item buttons scroll completely above floating cart & bottom nav */}
+                <div className="mobile-items-clearance" aria-hidden="true" />
               </div>
             </div>
           ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              <SortableContext items={items.map((i) => i.id)} strategy={rectSortingStrategy}>
-                <div className="item-grid">
-                  {items.length === 0 && (
-                    <div className="empty-hint" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-                    <div>No items yet. Tap <b>➕ Item</b> above or scan your physical menu card:</div>
-                    <button
-                      type="button"
-                      className="btn green"
-                      onClick={() => setShowMenuScanner(true)}
-                      style={{ padding: '8px 16px', fontSize: '0.88rem' }}
-                    >
-                      📷 Scan Menu with AI
-                    </button>
+            <>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                <SortableContext items={items.map((i) => i.id)} strategy={rectSortingStrategy}>
+                  <div className="item-grid">
+                    {items.length === 0 && (
+                      <div className="empty-hint" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                      <div>No items yet. Tap <b>➕ Item</b> above or scan your physical menu card:</div>
+                      <button
+                        type="button"
+                        className="btn green"
+                        onClick={() => setShowMenuScanner(true)}
+                        style={{ padding: '8px 16px', fontSize: '0.88rem' }}
+                      >
+                        📷 Scan Menu with AI
+                      </button>
+                    </div>
+                    )}
+                    {items.map((item) => (
+                      <SortableItemButton
+                        key={item.id}
+                        item={item}
+                        qty={qtyByItem.get(item.id) ?? 0}
+                        locked={locked}
+                        onTap={addToCart}
+                        onDecrement={removeFromCart}
+                        onEdit={openEditItem}
+                        variantQtys={qtyByVariant}
+                      />
+                    ))}
                   </div>
-                  )}
-                  {items.map((item) => (
-                    <SortableItemButton
-                      key={item.id}
-                      item={item}
-                      qty={qtyByItem.get(item.id) ?? 0}
-                      locked={locked}
-                      onTap={addToCart}
-                      onDecrement={removeFromCart}
-                      onEdit={openEditItem}
-                      variantQtys={qtyByVariant}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+                </SortableContext>
+              </DndContext>
+              {/* Mobile bottom clearance so last item buttons scroll completely above floating cart & bottom nav */}
+              <div className="mobile-items-clearance" aria-hidden="true" />
+            </>
           )}
 
           {/* Sticky Mobile Floating Cart Bar */}

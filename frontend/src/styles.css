@@ -915,6 +915,9 @@ select {
 .mobile-bottom-nav {
   display: none;
 }
+.mobile-items-clearance {
+  display: none;
+}
 .stock-save-bar {
   margin-bottom: 0;
 }
@@ -965,7 +968,14 @@ select {
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    padding-bottom: max(140px, calc(140px + env(safe-area-inset-bottom, 0px)));
+    padding-bottom: max(16px, calc(16px + env(safe-area-inset-bottom, 0px)));
+  }
+  .mobile-items-clearance {
+    display: block;
+    height: 190px;
+    width: 100%;
+    flex-shrink: 0;
+    pointer-events: none;
   }
   .workspace.show-items-mobile .cart-panel {
     display: none !important;
@@ -1015,6 +1025,17 @@ select {
     padding: 10px 16px;
     z-index: 990;
     cursor: pointer;
+    animation: mobileCartSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes mobileCartSlideUp {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
   }
   .m-cart-info {
     display: flex;
@@ -1678,11 +1699,11 @@ select {
   .blinkit-sidebar {
     width: 76px;
     padding: 6px 3px;
-    padding-bottom: max(110px, calc(100px + env(safe-area-inset-bottom, 0px)));
+    padding-bottom: max(80px, calc(80px + env(safe-area-inset-bottom, 0px)));
     gap: 4px;
     top: 0;
-    height: calc(100dvh - 140px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    max-height: calc(100dvh - 140px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    height: calc(100dvh - 195px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 195px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     border-radius: 12px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
