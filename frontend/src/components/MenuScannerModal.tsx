@@ -839,6 +839,7 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
               style={{
                 flex: 1,
                 overflowY: 'auto',
+                overflowX: 'auto',
                 border: '1px solid var(--border)',
                 borderRadius: 12,
                 background: 'var(--bg)',
@@ -847,116 +848,148 @@ export function MenuScannerModal({ onClose, onImportSuccess }: MenuScannerModalP
                 maxHeight: '45vh',
               }}
             >
-              {displayedItems.map((item) => (
+              <div style={{ minWidth: '560px', display: 'flex', flexDirection: 'column' }}>
+                {/* Table Column Headers */}
                 <div
-                  key={item.id}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
-                    padding: '8px 6px',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-                    opacity: item.selected ? 1 : 0.45,
+                    padding: '6px 6px 8px',
+                    borderBottom: '1px solid var(--border)',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: '#94a3b8',
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={item.selected}
-                    onChange={() => toggleItemSelection(item.id)}
-                    style={{ width: 18, height: 18, cursor: 'pointer' }}
-                  />
+                  <span style={{ width: 18, flexShrink: 0 }} />
+                  <span style={{ flex: '2 1 140px', minWidth: '130px' }}>Item Name</span>
+                  <span style={{ flex: '1.2 1 95px', minWidth: '90px' }}>Category</span>
+                  <span style={{ flex: '0 0 95px', minWidth: '95px' }}>Price (₹)</span>
+                  <span style={{ flex: '1.5 1 120px', minWidth: '100px' }}>Portion / Desc</span>
+                  <span style={{ width: 28, flexShrink: 0 }} />
+                </div>
 
-                  {/* Name */}
-                  <input
-                    type="text"
-                    value={item.name}
-                    onChange={(e) => updateItemField(item.id, 'name', e.target.value)}
-                    placeholder="Item Name"
+                {displayedItems.map((item) => (
+                  <div
+                    key={item.id}
                     style={{
-                      flex: 2,
-                      background: 'var(--panel)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      padding: '6px 10px',
-                      color: '#fff',
-                      fontSize: '0.85rem',
-                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 6px',
+                      borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                      opacity: item.selected ? 1 : 0.45,
                     }}
-                  />
-
-                  {/* Category */}
-                  <input
-                    type="text"
-                    value={item.category}
-                    onChange={(e) => updateItemField(item.id, 'category', e.target.value)}
-                    placeholder="Category"
-                    style={{
-                      flex: 1.2,
-                      background: 'var(--panel)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      padding: '6px 10px',
-                      color: '#94a3b8',
-                      fontSize: '0.85rem',
-                    }}
-                  />
-
-                  {/* Price */}
-                  <div style={{ display: 'flex', alignItems: 'center', flex: 0.9, position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 8, color: '#94a3b8', fontSize: '0.85rem' }}>₹</span>
+                  >
                     <input
-                      type="number"
-                      value={item.price}
-                      onChange={(e) => updateItemField(item.id, 'price', e.target.value)}
-                      placeholder="0"
+                      type="checkbox"
+                      checked={item.selected}
+                      onChange={() => toggleItemSelection(item.id)}
+                      style={{ width: 18, height: 18, cursor: 'pointer', flexShrink: 0 }}
+                    />
+
+                    {/* Name */}
+                    <input
+                      type="text"
+                      value={item.name}
+                      onChange={(e) => updateItemField(item.id, 'name', e.target.value)}
+                      placeholder="Item Name"
                       style={{
-                        width: '100%',
+                        flex: '2 1 140px',
+                        minWidth: '130px',
                         background: 'var(--panel)',
                         border: '1px solid var(--border)',
                         borderRadius: 8,
-                        padding: '6px 8px 6px 20px',
-                        color: '#22c55e',
-                        fontWeight: 700,
+                        padding: '6px 10px',
+                        color: '#fff',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                      }}
+                    />
+
+                    {/* Category */}
+                    <input
+                      type="text"
+                      value={item.category}
+                      onChange={(e) => updateItemField(item.id, 'category', e.target.value)}
+                      placeholder="Category"
+                      style={{
+                        flex: '1.2 1 95px',
+                        minWidth: '90px',
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        padding: '6px 10px',
+                        color: '#94a3b8',
                         fontSize: '0.85rem',
                       }}
                     />
+
+                    {/* Price */}
+                    <div style={{ display: 'flex', alignItems: 'center', flex: '0 0 95px', minWidth: '95px', position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 8, color: '#94a3b8', fontSize: '0.85rem', pointerEvents: 'none' }}>₹</span>
+                      <input
+                        type="number"
+                        className="clean-number"
+                        value={item.price}
+                        onChange={(e) => updateItemField(item.id, 'price', e.target.value)}
+                        placeholder="0"
+                        style={{
+                          width: '100%',
+                          minWidth: '95px',
+                          boxSizing: 'border-box',
+                          background: 'var(--panel)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          padding: '6px 6px 6px 20px',
+                          color: '#22c55e',
+                          fontWeight: 700,
+                          fontSize: '0.9rem',
+                        }}
+                      />
+                    </div>
+
+                    {/* Description */}
+                    <input
+                      type="text"
+                      value={item.description}
+                      onChange={(e) => updateItemField(item.id, 'description', e.target.value)}
+                      placeholder="Desc / Portion"
+                      style={{
+                        flex: '1.5 1 120px',
+                        minWidth: '100px',
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        padding: '6px 10px',
+                        color: '#94a3b8',
+                        fontSize: '0.82rem',
+                      }}
+                    />
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={() => removeItem(item.id)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                        padding: '4px 6px',
+                        fontSize: '1rem',
+                        flexShrink: 0,
+                      }}
+                      title="Remove item"
+                    >
+                      🗑️
+                    </button>
                   </div>
-
-                  {/* Description */}
-                  <input
-                    type="text"
-                    value={item.description}
-                    onChange={(e) => updateItemField(item.id, 'description', e.target.value)}
-                    placeholder="Desc / Portion"
-                    style={{
-                      flex: 1.5,
-                      background: 'var(--panel)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      padding: '6px 10px',
-                      color: '#94a3b8',
-                      fontSize: '0.82rem',
-                    }}
-                  />
-
-                  {/* Delete */}
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#ef4444',
-                      cursor: 'pointer',
-                      padding: '4px 6px',
-                      fontSize: '1rem',
-                    }}
-                    title="Remove item"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             {/* Bottom Actions */}

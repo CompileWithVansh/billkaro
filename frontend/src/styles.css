@@ -1756,5 +1756,12 @@ select {
   max-height: calc(100dvh - 200px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
 }
 
-
-
+/* Remove spin buttons from number inputs where space is tight */
+input[type="number"].clean-number::-webkit-inner-spin-button,
+input[type="number"].clean-number::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"].clean-number {
+  -moz-appearance: textfield;
+}
