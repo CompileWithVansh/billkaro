@@ -405,12 +405,193 @@ export const billsRepo = {
     );
     return rows[0];
   },
-  async listByUser(userId) {
-    const { rows } = await getPool().query(
-      'SELECT * FROM billkaro_bills WHERE user_id = $1 ORDER BY id DESC LIMIT 100',
-      [Number(userId)]
-    );
-    return rows;
+  async listByUser(userId, options = {}) {
+    const {
+      limit = 1000,
+      offset = 0,
+      days = null,
+      startDate = null,
+      endDate = null,
+      status = null,
+      includeUnpaid = false,
+    } = options;
+
+    function parseDateBoundary(dateStr, isEndOfDay = false) {
+      if (!dateStr) return null;
+      const str = String(dateStr).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        // Expand bare YYYY-MM-DD to full local day boundaries
+        const d = new Date(`${str}T${isEndOfDay ? '23:59:59.999' : '00:00:00.000'}`);
+        if (isNaN(d.getTime())) throw new Error(`Invalid date: ${dateStr}`);
+        return d.toISOString();
+      }
+      const d = new Date(str);
+      if (isNaN(d.getTime())) throw new Error(`Invalid date: ${dateStr}`);
+      return d.toISOString();
+    }
+
+    const startIso = parseDateBoundary(startDate, false);
+    const endIso = parseDateBoundary(endDate, true);
+
+    if (startIso && endIso && new Date(startIso).getTime() > new Date(endIso).getTime()) {
+      throw new Error('startDate cannot be after endDate');
+    }
+
+    const safeLimit = Math.min(Math.max(1, Number(limit) || 1000), 10000);
+    const safeOffset = Math.max(0, Number(offset) || 0);
+    const uid = Number(userId);
+
+    // Build date conditions
+    const dateConditions = [];
+    const dateParams = [];
+
+    if (startIso && endIso) {
+      dateParams.push(startIso, endIso);
+      dateConditions.push(`created_at >= $START_PARAM AND created_at <= $END_PARAM`);
+    } else if (startIso) {
+      dateParams.push(startIso);
+      dateConditions.push(`created_at >= $START_PARAM`);
+    } else if (endIso) {
+      dateParams.push(endIso);
+      dateConditions.push(`created_at <= $END_PARAM`);
+    } else if (days && Number(days) > 0) {
+      dateParams.push(Number(days));
+      dateConditions.push(`created_at >= (now() - ($DAYS_PARAM || ' days')::interval)`);
+    }
+
+    const hasDateFilter = dateConditions.length > 0;
+
+    if (includeUnpaid && hasDateFilter && (!status || status === 'all')) {
+      let pIdx = 1;
+      const windowParams = [uid];
+
+      let windowCond = dateConditions[0];
+      if (startIso && endIso) {
+        windowParams.push(startIso, endIso);
+        windowCond = windowCond.replace('$START_PARAM', `$${++pIdx}`).replace('$END_PARAM', `$${++pIdx}`);
+      } else if (startIso) {
+        windowParams.push(startIso);
+        windowCond = windowCond.replace('$START_PARAM', `$${++pIdx}`);
+      } else if (endIso) {
+        windowParams.push(endIso);
+        windowCond = windowCond.replace('$END_PARAM', `$${++pIdx}`);
+      } else if (days && Number(days) > 0) {
+        windowParams.push(Number(days));
+        windowCond = windowCond.replace('$DAYS_PARAM', `$${++pIdx}`);
+      }
+
+      if (safeOffset > 0) {
+        // Offset pagination only fetches window records
+        windowParams.push(safeLimit + 1, safeOffset);
+        const windowQuery = `
+          SELECT * FROM billkaro_bills 
+          WHERE user_id = $1 AND ${windowCond}
+          ORDER BY id DESC
+          LIMIT $${++pIdx} OFFSET $${++pIdx}
+        `;
+        const { rows: windowRows } = await getPool().query(windowQuery, windowParams);
+        const windowTruncated = windowRows.length > safeLimit;
+        const resultRows = windowTruncated ? windowRows.slice(0, safeLimit) : windowRows;
+        resultRows.windowTruncated = windowTruncated;
+        resultRows.unpaidTruncated = false;
+        return resultRows;
+      }
+
+      // Page 1 / Full Period: Fetch window records
+      windowParams.push(safeLimit + 1);
+      const windowQuery = `
+        SELECT * FROM billkaro_bills 
+        WHERE user_id = $1 AND ${windowCond}
+        ORDER BY id DESC
+        LIMIT $${++pIdx}
+      `;
+      const { rows: windowRows } = await getPool().query(windowQuery, windowParams);
+      const windowTruncated = windowRows.length > safeLimit;
+      const finalWindowRows = windowTruncated ? windowRows.slice(0, safeLimit) : windowRows;
+
+      // Fetch unpaid debts outside the date window (using idx_bills_user_status_total)
+      const unpaidParams = [uid];
+      let uIdx = 1;
+      let unpaidExcludedCond = dateConditions[0];
+      if (startIso && endIso) {
+        unpaidParams.push(startIso, endIso);
+        unpaidExcludedCond = unpaidExcludedCond.replace('$START_PARAM', `$${++uIdx}`).replace('$END_PARAM', `$${++uIdx}`);
+      } else if (startIso) {
+        unpaidParams.push(startIso);
+        unpaidExcludedCond = unpaidExcludedCond.replace('$START_PARAM', `$${++uIdx}`);
+      } else if (endIso) {
+        unpaidParams.push(endIso);
+        unpaidExcludedCond = unpaidExcludedCond.replace('$END_PARAM', `$${++uIdx}`);
+      } else if (days && Number(days) > 0) {
+        unpaidParams.push(Number(days));
+        unpaidExcludedCond = unpaidExcludedCond.replace('$DAYS_PARAM', `$${++uIdx}`);
+      }
+
+      unpaidParams.push(2001);
+      const unpaidQuery = `
+        SELECT * FROM billkaro_bills 
+        WHERE user_id = $1 AND status = 'unpaid' AND NOT (${unpaidExcludedCond})
+        ORDER BY id DESC
+        LIMIT $${++uIdx}
+      `;
+      const { rows: unpaidRows } = await getPool().query(unpaidQuery, unpaidParams);
+      const unpaidTruncated = unpaidRows.length > 2000;
+      const finalUnpaidRows = unpaidTruncated ? unpaidRows.slice(0, 2000) : unpaidRows;
+
+      // Authoritative index-only scan on idx_bills_user_status_total for 100% accurate Total Udhaar
+      const { rows: statRows } = await getPool().query(
+        `SELECT COUNT(*)::int AS count, COALESCE(SUM(total), 0)::real AS total_amount 
+         FROM billkaro_bills WHERE user_id = $1 AND status = 'unpaid'`,
+        [uid]
+      );
+      const stats = statRows[0] || { count: 0, total_amount: 0 };
+
+      const combined = [...finalWindowRows, ...finalUnpaidRows];
+      combined.windowTruncated = windowTruncated;
+      combined.unpaidTruncated = unpaidTruncated;
+      combined.totalUdhaarAmount = Number(stats.total_amount);
+      combined.totalUdhaarCount = Number(stats.count);
+      return combined;
+    }
+
+    // Standard single-query path
+    let query = 'SELECT * FROM billkaro_bills WHERE user_id = $1';
+    const params = [uid];
+
+    if (startIso && endIso) {
+      params.push(startIso, endIso);
+      query += ` AND created_at >= $${params.length - 1} AND created_at <= $${params.length}`;
+    } else if (startIso) {
+      params.push(startIso);
+      query += ` AND created_at >= $${params.length}`;
+    } else if (endIso) {
+      params.push(endIso);
+      query += ` AND created_at <= $${params.length}`;
+    } else if (days && Number(days) > 0) {
+      params.push(Number(days));
+      query += ` AND created_at >= (now() - ($${params.length} || ' days')::interval)`;
+    }
+
+    if (status && status !== 'all') {
+      params.push(status);
+      query += ` AND status = $${params.length}`;
+    }
+
+    query += ' ORDER BY id DESC';
+    params.push(safeLimit + 1);
+    query += ` LIMIT $${params.length}`;
+
+    if (safeOffset > 0) {
+      params.push(safeOffset);
+      query += ` OFFSET $${params.length}`;
+    }
+
+    const { rows } = await getPool().query(query, params);
+    const windowTruncated = rows.length > safeLimit;
+    const finalRows = windowTruncated ? rows.slice(0, safeLimit) : rows;
+    finalRows.windowTruncated = windowTruncated;
+    finalRows.unpaidTruncated = false;
+    return finalRows;
   },
   async updateStatus(id, userId, status, paymentMethod) {
     let query = `UPDATE billkaro_bills SET status = $1`;
@@ -426,7 +607,8 @@ export const billsRepo = {
   },
   async getNextBillId(userId) {
     const { rows } = await getPool().query(
-      'SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM billkaro_bills'
+      'SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM billkaro_bills WHERE user_id = $1',
+      [Number(userId)]
     );
     return Number(rows[0]?.next_id || 1);
   },

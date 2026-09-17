@@ -35,17 +35,63 @@ export default function ReportsTab({ user, items }: Props) {
 
   const [activeReceiptBill, setActiveReceiptBill] = useState<SavedBill | null>(null);
   const [sharingBillId, setSharingBillId] = useState<string | number | null>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+  const [isUnpaidTruncated, setIsUnpaidTruncated] = useState(false);
+  const [authoritativeUdhaar, setAuthoritativeUdhaar] = useState<number | null>(null);
+  const billsCacheRef = useRef<Record<string, SavedBill[]>>({});
   const receiptRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadBills();
-  }, []);
+    if (salesPeriod === 'range') {
+      if (!startDate && !endDate) {
+        setBills([]);
+        setLoading(false);
+        return;
+      }
+      const timer = setTimeout(() => {
+        loadBills();
+      }, 400);
+      return () => clearTimeout(timer);
+    } else {
+      loadBills();
+    }
+  }, [salesPeriod, startDate, endDate]);
 
-  async function loadBills() {
+  async function loadBills(forceRefresh = false) {
+    let cacheKey: string = salesPeriod;
+    const params: Record<string, any> = { limit: 5000, includeUnpaid: true };
+
+    if (salesPeriod === 'today' || salesPeriod === 'yesterday' || salesPeriod === 'week' || salesPeriod === 'month') {
+      cacheKey = 'last30days';
+      params.days = 30;
+    } else if (salesPeriod === 'range') {
+      if (!startDate && !endDate) {
+        setBills([]);
+        setLoading(false);
+        return;
+      }
+      cacheKey = `range_${startDate}_${endDate}`;
+      if (startDate) params.startDate = new Date(`${startDate}T00:00:00.000`).toISOString();
+      if (endDate) params.endDate = new Date(`${endDate}T23:59:59.999`).toISOString();
+    }
+
+    if (!forceRefresh && billsCacheRef.current[cacheKey]) {
+      setBills(billsCacheRef.current[cacheKey]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      const res = await api.get('/bills');
-      setBills(res.data.bills || []);
+      const res = await api.get('/bills', { params });
+      const fetchedBills: SavedBill[] = res.data.bills || [];
+      setIsTruncated(Boolean(res.data.truncated));
+      setIsUnpaidTruncated(Boolean(res.data.unpaidTruncated));
+      if (res.data.totalUdhaarAmount != null) {
+        setAuthoritativeUdhaar(res.data.totalUdhaarAmount);
+      }
+      billsCacheRef.current[cacheKey] = fetchedBills;
+      setBills(fetchedBills);
     } catch (err) {
       console.error('Failed to load past bills:', err);
     } finally {
@@ -57,6 +103,7 @@ export default function ReportsTab({ user, items }: Props) {
     try {
       setUpdatingId(billId);
       await api.put(`/bills/${billId}/status`, { status: 'paid' });
+      billsCacheRef.current = {};
       setBills((prev) =>
         prev.map((b) => (b.id === billId ? { ...b, status: 'paid' } : b))
       );
@@ -73,6 +120,7 @@ export default function ReportsTab({ user, items }: Props) {
     try {
       setUpdatingId(billId);
       await api.delete(`/bills/${billId}`);
+      billsCacheRef.current = {};
       setBills((prev) => prev.filter((b) => b.id !== billId));
     } catch (err) {
       console.error('Failed to delete bill:', err);
@@ -221,10 +269,10 @@ export default function ReportsTab({ user, items }: Props) {
         return billDate >= monthAgo;
       }
       if (salesPeriod === 'range') {
-        if (!startDate && !endDate) return true;
+        if (!startDate && !endDate) return false;
         const bTime = billDate.getTime();
-        const start = startDate ? new Date(startDate + 'T00:00:00').getTime() : 0;
-        const end = endDate ? new Date(endDate + 'T23:59:59').getTime() : Infinity;
+        const start = startDate ? new Date(startDate + 'T00:00:00.000').getTime() : 0;
+        const end = endDate ? new Date(endDate + 'T23:59:59.999').getTime() : Infinity;
         return bTime >= start && bTime <= end;
       }
       return dStr === todayStr;
@@ -260,9 +308,11 @@ export default function ReportsTab({ user, items }: Props) {
   const periodUdhaar = periodBills.filter((b) => b.status === 'unpaid').reduce((s, b) => s + Number(b.total || 0), 0);
   const periodUdhaarCount = periodBills.filter((b) => b.status === 'unpaid').length;
 
-  const totalUdhaar = bills
-    .filter((b) => b.status === 'unpaid')
-    .reduce((sum, b) => sum + Number(b.total || 0), 0);
+  const totalUdhaar = authoritativeUdhaar != null
+    ? authoritativeUdhaar
+    : bills
+        .filter((b) => b.status === 'unpaid')
+        .reduce((sum, b) => sum + Number(b.total || 0), 0);
 
   // Top Selling Items Analytics with Portion Variant Rollup
   const topSellingItems = useMemo(() => {
@@ -611,16 +661,39 @@ export default function ReportsTab({ user, items }: Props) {
           </button>
         </div>
 
-        <button
-          type="button"
-          className="btn sm-btn primary"
-          onClick={exportReportCsv}
-          style={{ fontSize: '0.78rem', padding: '5px 12px', borderRadius: 8 }}
-          title="Download Excel CSV"
-        >
-          📥 Export CSV
-        </button>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn sm-btn ghost"
+            onClick={() => loadBills(true)}
+            style={{ fontSize: '0.78rem', padding: '5px 10px', borderRadius: 8 }}
+            title="Refresh reports"
+          >
+            🔄 Refresh
+          </button>
+          <button
+            type="button"
+            className="btn sm-btn primary"
+            onClick={exportReportCsv}
+            style={{ fontSize: '0.78rem', padding: '5px 12px', borderRadius: 8 }}
+            title="Download Excel CSV"
+          >
+            📥 Export CSV
+          </button>
+        </div>
       </div>
+
+      {isTruncated && (
+        <div style={{ padding: '8px 16px', background: 'rgba(234, 179, 8, 0.15)', borderLeft: '4px solid #eab308', color: '#fef08a', fontSize: '0.8rem' }}>
+          ⚠️ Notice: Displaying the latest 5,000 bills for this query. For older records, please choose a narrower custom date range.
+        </div>
+      )}
+
+      {isUnpaidTruncated && (
+        <div style={{ padding: '8px 16px', background: 'rgba(234, 179, 8, 0.15)', borderLeft: '4px solid #eab308', color: '#fef08a', fontSize: '0.8rem' }}>
+          ⚠️ Notice: Showing the most recent 2,000 unpaid records. Total outstanding Udhaar balance across all debts is accurately calculated above.
+        </div>
+      )}
 
       {salesPeriod === 'range' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--panel-2)', padding: '8px 16px', borderBottom: '1px solid var(--border)' }}>

@@ -17,6 +17,7 @@ import itemRoutes from './routes/itemRoutes.js';
 import billRoutes, { updateActiveKdsStatus } from './routes/billRoutes.js';
 import { getCorsOptions, getSocketCorsOptions } from './middleware/corsConfig.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
+import compression from 'compression';
 
 // Memoized DB initialization. Retries on failure so a sleeping/cold database
 // (e.g. Neon free tier waking up) doesn't permanently break the process.
@@ -82,6 +83,9 @@ app.use((_req, res, next) => {
   res.removeHeader('X-Render-Origin-Server');
   next();
 });
+
+// Gzip / Brotli payload compression for fast report data transfer
+app.use(compression());
 
 // Secure CORS configuration
 app.use(cors(getCorsOptions(isProd)));

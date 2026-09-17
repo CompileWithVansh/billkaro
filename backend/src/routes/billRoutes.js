@@ -156,7 +156,23 @@ router.post(
 // In-memory deduplication cache to prevent duplicate bill creation from accidental double-taps or network retries
 const recentBillsMap = new Map(); // key -> { id, bill, timestamp }
 
-// Periodic cleanup of stale deduplication cache entries every 60 seconds
+// In-memory reports/history cache with 45s TTL, LRU capping (max 100), and max 3 entries per user
+export const billsReportsCache = new Map(); // key -> { timestamp, data, userId }
+const CACHE_TTL_MS = 45000; // 45 seconds
+const MAX_CACHE_ENTRIES = 100;
+const MAX_USER_CACHE_ENTRIES = 3;
+
+export function invalidateBillsCache(userId) {
+  if (!userId) return;
+  const prefix = `${userId}:`;
+  for (const key of billsReportsCache.keys()) {
+    if (key.startsWith(prefix)) {
+      billsReportsCache.delete(key);
+    }
+  }
+}
+
+// Periodic cleanup of stale deduplication and report cache entries every 15 seconds
 setInterval(() => {
   const now = Date.now();
   for (const [key, val] of recentBillsMap.entries()) {
@@ -169,7 +185,49 @@ setInterval(() => {
       recentKdsSends.delete(key);
     }
   }
-}, 60000).unref();
+  for (const [key, val] of billsReportsCache.entries()) {
+    if (now - val.timestamp > CACHE_TTL_MS) {
+      billsReportsCache.delete(key);
+    }
+  }
+}, 15000).unref();
+
+export function parseReportParams(query = {}) {
+  const rawDays = query.days ? parseInt(String(query.days), 10) : null;
+  const days = Number.isInteger(rawDays) && rawDays > 0 ? Math.min(365, rawDays) : null;
+  const startDate = query.startDate ? String(query.startDate).trim() : null;
+  const endDate = query.endDate ? String(query.endDate).trim() : null;
+  const rawLimit = query.limit ? parseInt(String(query.limit), 10) : null;
+  const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(10000, rawLimit) : (days ? 5000 : 1000);
+  const rawOffset = query.offset ? parseInt(String(query.offset), 10) : 0;
+  const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+  const status = query.status && ['paid', 'unpaid', 'all'].includes(String(query.status)) ? String(query.status) : null;
+  const includeUnpaid = query.includeUnpaid === 'true' || query.includeUnpaid === '1';
+
+  if (startDate) {
+    const d = new Date(startDate);
+    if (isNaN(d.getTime())) {
+      return { error: 'Invalid startDate format', statusCode: 400 };
+    }
+  }
+
+  if (endDate) {
+    const d = new Date(endDate);
+    if (isNaN(d.getTime())) {
+      return { error: 'Invalid endDate format', statusCode: 400 };
+    }
+  }
+
+  if (startDate && endDate && new Date(startDate).getTime() > new Date(endDate).getTime()) {
+    return { error: 'startDate cannot be after endDate', statusCode: 400 };
+  }
+
+  if (status && status !== 'all' && includeUnpaid) {
+    return { error: 'Cannot combine status filter with includeUnpaid', statusCode: 400 };
+  }
+
+  return { days, startDate, endDate, limit, offset, status, includeUnpaid };
+}
 
 // POST /api/bills (Payment checkout — strictly saves to database for history/reports; Cashier only)
 router.post(
@@ -410,6 +468,9 @@ router.post(
     }
     recentBillsMap.set(fingerprintKey, billRecord);
 
+    // Invalidate cached reports so fresh sales reflect immediately
+    invalidateBillsCache(userId);
+
     res.status(201).json({ id: bill.id, bill });
   })
 );
@@ -419,8 +480,38 @@ router.get(
   '/',
   requireUserRole,
   wrap(async (req, res) => {
-    const rows = await billsRepo.listByUser(req.userId);
-    res.json({
+    const parsed = parseReportParams(req.query);
+    if (parsed.error) {
+      return res.status(parsed.statusCode || 400).json({ error: parsed.error });
+    }
+
+    const { days, startDate, endDate, limit, offset, status, includeUnpaid } = parsed;
+
+    // Only cache canonical, repeatable period queries (e.g. days=7, days=30) without custom offsets
+    const isCacheable = Boolean(days && !startDate && !endDate && offset === 0);
+    const cacheKey = `${req.userId}:days_${days}:limit_${limit}:status_${status || 'all'}:unpaid_${includeUnpaid}`;
+
+    if (isCacheable) {
+      const cached = billsReportsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+        return res.json(cached.data);
+      }
+    }
+
+    const rows = await billsRepo.listByUser(req.userId, {
+      days,
+      startDate,
+      endDate,
+      limit,
+      offset,
+      status,
+      includeUnpaid,
+    });
+
+    const isTruncated = Boolean(rows.windowTruncated);
+    const isUnpaidTruncated = Boolean(rows.unpaidTruncated);
+
+    const responsePayload = {
       bills: rows.map((r) => ({
         id: r.id,
         label: r.label,
@@ -439,7 +530,32 @@ router.get(
         upiAmount: r.upi_amount != null ? Number(r.upi_amount) : null,
         createdAt: r.created_at,
       })),
-    });
+      count: rows.length,
+      truncated: isTruncated,
+      unpaidTruncated: isUnpaidTruncated,
+      totalUdhaarAmount: rows.totalUdhaarAmount !== undefined ? rows.totalUdhaarAmount : null,
+      totalUdhaarCount: rows.totalUdhaarCount !== undefined ? rows.totalUdhaarCount : null,
+    };
+
+    // Cache if cacheable and not oversized (>3000 rows)
+    if (isCacheable && rows.length <= 3000) {
+      if (billsReportsCache.size >= MAX_CACHE_ENTRIES) {
+        const oldestKey = billsReportsCache.keys().next().value;
+        if (oldestKey) billsReportsCache.delete(oldestKey);
+      }
+      const userPrefix = `${req.userId}:`;
+      const userKeys = [];
+      for (const k of billsReportsCache.keys()) {
+        if (k.startsWith(userPrefix)) userKeys.push(k);
+      }
+      while (userKeys.length >= MAX_USER_CACHE_ENTRIES) {
+        const toDelete = userKeys.shift();
+        if (toDelete) billsReportsCache.delete(toDelete);
+      }
+      billsReportsCache.set(cacheKey, { timestamp: Date.now(), data: responsePayload, userId: req.userId });
+    }
+
+    res.json(responsePayload);
   })
 );
 
@@ -472,6 +588,7 @@ router.put(
     const cleanPaymentMethod = validPaymentMethods.includes(paymentMethod) ? paymentMethod : undefined;
     const bill = await billsRepo.updateStatus(id, req.userId, status, cleanPaymentMethod);
     if (!bill) return res.status(404).json({ error: 'Bill not found' });
+    invalidateBillsCache(req.userId);
     res.json({ ok: true, bill });
   })
 );
@@ -487,6 +604,7 @@ router.delete(
     }
     const ok = await billsRepo.remove(id, req.userId);
     if (!ok) return res.status(404).json({ error: 'Bill not found' });
+    invalidateBillsCache(req.userId);
     res.json({ ok: true });
   })
 );
