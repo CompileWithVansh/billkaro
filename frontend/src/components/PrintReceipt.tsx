@@ -115,15 +115,19 @@ export async function printBill({
        </tr>`
     : '';
 
-  const isTaxEnabled = user?.taxEnabled ?? (user?.taxPercent ? user.taxPercent > 0 : false);
+  const hasTax = tax > 0;
+  const isTaxEnabled = user?.taxEnabled ?? (user?.taxPercent ? user.taxPercent > 0 : hasTax);
   const isTaxInclusive = user?.taxInclusive !== false;
-  const taxRate = isTaxEnabled ? (user.taxPercent || 0) : 0;
+  const derivedRate = user?.taxPercent && user.taxPercent > 0
+    ? user.taxPercent
+    : (hasTax && subtotal > 0 ? +((tax / subtotal) * 100).toFixed(1) : 5);
+  const taxRate = (isTaxEnabled || hasTax) ? derivedRate : 0;
   const halfRate = +(taxRate / 2).toFixed(2);
 
   let taxRows = '';
-  if (taxRate > 0 && tax > 0) {
-    const cgst = +(subtotal * (halfRate / 100)).toFixed(2);
-    const sgst = +(subtotal * (halfRate / 100)).toFixed(2);
+  if ((taxRate > 0 && tax > 0) || hasTax) {
+    const cgst = +(tax / 2).toFixed(2);
+    const sgst = +(tax / 2).toFixed(2);
     const roundOff = +(total - (subtotal + cgst + sgst)).toFixed(2);
 
     taxRows = `

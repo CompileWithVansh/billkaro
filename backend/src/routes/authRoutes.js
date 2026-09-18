@@ -218,6 +218,13 @@ router.put(
     const existing = await usersRepo.findById(req.userId);
     if (!existing) return res.status(404).json({ error: 'User not found' });
 
+    // Auto-default tax rate to 5% if enabled but rate is zero/unspecified
+    if (cleanTaxEnabled === true) {
+      if (cleanTax === undefined || cleanTax <= 0) {
+        cleanTax = (existing.tax_percent && existing.tax_percent > 0) ? existing.tax_percent : 5;
+      }
+    }
+
     // Security Lock: If UPI ID or Payee Name is being modified, require owner password
     const upiChanging = cleanUpiId !== undefined && (cleanUpiId || '') !== (existing.upi_id || '');
     const payeeChanging = cleanPayeeName !== undefined && (cleanPayeeName || '') !== (existing.payee_name || '');

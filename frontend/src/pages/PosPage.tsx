@@ -764,6 +764,8 @@ export default function PosPage() {
     upiAmount?: number | null;
     finalTotal: number;
     finalTax: number;
+    taxEnabled?: boolean;
+    taxPercent?: number;
   }) {
     // Prevent multiple rapid clicks from triggering duplicate bill creation
     if (isSubmittingBillRef.current) {
@@ -775,6 +777,13 @@ export default function PosPage() {
     try {
       const billTotal = details.finalTotal !== undefined ? details.finalTotal : total;
       const billTax = details.finalTax !== undefined ? details.finalTax : tax;
+      const effectiveTaxEnabled = details.taxEnabled !== undefined ? details.taxEnabled : taxEnabled;
+      const effectiveTaxPercent = details.taxPercent !== undefined ? details.taxPercent : taxPercent;
+      const effectiveUser = user ? {
+        ...user,
+        taxEnabled: effectiveTaxEnabled,
+        taxPercent: effectiveTaxPercent,
+      } : null;
 
       setCurrentReceiptDetails({
         paymentMethod: details.paymentMethod,
@@ -794,13 +803,13 @@ export default function PosPage() {
 
       // ACTION 1: PRINT RECEIPT (Pre-bill / Dining Check)
       // Strictly prints to thermal/browser printer WITHOUT creating a database bill or Udhaar record
-      if (details.action === 'print' && user) {
+      if (details.action === 'print' && effectiveUser) {
         const printParams = {
           bill: { ...activeBill, label: `Bill No: ${invNumber}` },
           invoiceNumber: invNumber,
           customerName: details.customerName,
           customerPhone: details.customerPhone,
-          user,
+          user: effectiveUser,
           items,
           subtotal,
           tax: billTax,
@@ -833,8 +842,8 @@ export default function PosPage() {
           ? `\nDiscount (${details.discountType === 'percent' ? `${details.discountValue}%` : '₹' + details.discountValue}): -₹${details.discountAmount.toFixed(2)}`
           : '';
 
-        const halfRate = +(taxPercent / 2).toFixed(2);
-        const taxText = taxPercent > 0 && billTax > 0
+        const halfRate = +(effectiveTaxPercent / 2).toFixed(2);
+        const taxText = effectiveTaxPercent > 0 && billTax > 0
           ? `\nCGST (${halfRate}%): ₹${(billTax / 2).toFixed(2)}\nSGST (${halfRate}%): ₹${(billTax / 2).toFixed(2)}${taxInclusive ? ' (Included in item prices)' : ''}`
           : '';
         const gstinHeader = user?.gstin ? `\nGSTIN: ${user.gstin}` : '';
@@ -1600,8 +1609,31 @@ export default function PosPage() {
                 </>
               )
             ) : (
-              <div className="totals-row grand">
-                <span>Total</span>
+              <div className="totals-row grand" style={{ alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>Total</span>
+                  <button
+                    type="button"
+                    className="btn ghost sm-btn"
+                    onClick={() => {
+                      if (window.innerWidth <= 768) {
+                        setMobileMainTab('settings');
+                      } else {
+                        setShowSettings(true);
+                      }
+                    }}
+                    style={{
+                      padding: '1px 6px',
+                      fontSize: '0.68rem',
+                      color: '#94a3b8',
+                      borderColor: 'rgba(148, 163, 184, 0.3)',
+                      borderRadius: 4,
+                    }}
+                    title="Enable GST in Store Settings"
+                  >
+                    + GST
+                  </button>
+                </div>
                 <span>₹{total.toFixed(2)}</span>
               </div>
             )}

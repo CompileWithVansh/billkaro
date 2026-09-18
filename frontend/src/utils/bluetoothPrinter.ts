@@ -745,8 +745,11 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
       );
     }
 
-    if (tax > 0 && user.taxPercent) {
-      const halfRate = +(user.taxPercent / 2).toFixed(2);
+    if (tax > 0) {
+      const effectiveRate = user.taxPercent && user.taxPercent > 0
+        ? user.taxPercent
+        : (subtotal > 0 ? Math.round((tax / subtotal) * 100) : 5);
+      const halfRate = +(effectiveRate / 2).toFixed(2);
       builder.twoCol(`CGST (${halfRate}%):`, `Rs ${(tax / 2).toFixed(2)}`);
       builder.twoCol(`SGST (${halfRate}%):`, `Rs ${(tax / 2).toFixed(2)}`);
     }

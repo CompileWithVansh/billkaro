@@ -107,8 +107,43 @@ export default function SettingsModal({ onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  const [gstSaving, setGstSaving] = useState(false);
+  const [gstSavedMsg, setGstSavedMsg] = useState('');
+
   const numRate = Number(taxPercent) || 0;
   const halfRate = +(numRate / 2).toFixed(2);
+
+  async function saveGstSetting(enabled: boolean, rate?: number | string, inclusive?: boolean) {
+    const nextRate = rate !== undefined ? rate : taxPercent;
+    const nextInclusive = inclusive !== undefined ? inclusive : taxInclusive;
+    const num = Number(nextRate) || 0;
+    const effectiveRate = enabled && num <= 0 ? 5 : num;
+
+    setTaxEnabled(enabled);
+    if (enabled && num <= 0) setTaxPercent('5');
+    if (inclusive !== undefined) setTaxInclusive(inclusive);
+    if (rate !== undefined) setTaxPercent(String(rate));
+
+    setGstSaving(true);
+    setGstSavedMsg('');
+    try {
+      const res = await api.put('/auth/settings', {
+        taxEnabled: enabled,
+        taxPercent: enabled ? effectiveRate : 0,
+        taxInclusive: nextInclusive,
+      });
+      if (res.data.user) {
+        updateUser(res.data.user);
+        setGstSavedMsg('✓ Saved');
+        setTimeout(() => setGstSavedMsg(''), 3000);
+      }
+    } catch (err: any) {
+      console.warn('Failed to auto-save GST settings:', err);
+      setError(err?.response?.data?.error || 'Could not auto-save GST settings');
+    } finally {
+      setGstSaving(false);
+    }
+  }
 
   const [upiPassword, setUpiPassword] = useState('');
   const isUpiChanged =
@@ -176,7 +211,7 @@ export default function SettingsModal({ onClose }: Props) {
         payeeName: payeeName.trim() || null,
         taxEnabled,
         taxInclusive,
-        taxPercent: taxEnabled ? (Number(taxPercent) || 0) : 0,
+        taxPercent: taxEnabled ? (Number(taxPercent) || 5) : 0,
         currentPassword: isUpiChanged ? upiPassword.trim() : undefined,
       });
       updateUser(res.data.user);
@@ -831,8 +866,18 @@ export default function SettingsModal({ onClose }: Props) {
                 {/* TOGGLE: GST On/Off */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f8fafc' }}>
-                      Enable GST Tax Billing
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f8fafc' }}>
+                        Enable GST Tax Billing
+                      </span>
+                      {gstSaving && (
+                        <span style={{ fontSize: '0.68rem', color: '#38bdf8', fontWeight: 600 }}>Saving…</span>
+                      )}
+                      {gstSavedMsg && (
+                        <span style={{ fontSize: '0.68rem', color: '#34d399', fontWeight: 700, background: 'rgba(16, 185, 129, 0.15)', padding: '1px 6px', borderRadius: 4 }}>
+                          {gstSavedMsg}
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: '0.7rem', color: taxEnabled ? '#34d399' : '#94a3b8', marginTop: 2 }}>
                       {taxEnabled ? '🟢 Active — Invoices and receipts include GST breakdown.' : '⚪ Disabled — Invoices and receipts print clean totals without tax.'}
@@ -841,7 +886,7 @@ export default function SettingsModal({ onClose }: Props) {
 
                   <button
                     type="button"
-                    onClick={() => setTaxEnabled(!taxEnabled)}
+                    onClick={() => saveGstSetting(!taxEnabled)}
                     style={{
                       width: 48,
                       height: 26,
@@ -878,7 +923,7 @@ export default function SettingsModal({ onClose }: Props) {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         <button
                           type="button"
-                          onClick={() => setTaxInclusive(true)}
+                          onClick={() => saveGstSetting(taxEnabled, taxPercent, true)}
                           style={{
                             padding: '10px',
                             borderRadius: 8,
@@ -898,7 +943,7 @@ export default function SettingsModal({ onClose }: Props) {
 
                         <button
                           type="button"
-                          onClick={() => setTaxInclusive(false)}
+                          onClick={() => saveGstSetting(taxEnabled, taxPercent, false)}
                           style={{
                             padding: '10px',
                             borderRadius: 8,
@@ -928,6 +973,7 @@ export default function SettingsModal({ onClose }: Props) {
                         step="0.1"
                         value={taxPercent}
                         onChange={(e) => setTaxPercent(e.target.value)}
+                        onBlur={() => saveGstSetting(taxEnabled, taxPercent, taxInclusive)}
                         placeholder="5"
                       />
 
@@ -936,7 +982,7 @@ export default function SettingsModal({ onClose }: Props) {
                           <button
                             key={rate}
                             type="button"
-                            onClick={() => setTaxPercent(rate)}
+                            onClick={() => saveGstSetting(taxEnabled, rate, taxInclusive)}
                             style={{
                               padding: '3px 8px',
                               borderRadius: 6,

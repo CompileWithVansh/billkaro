@@ -117,6 +117,41 @@ export default function SettingsTab() {
     ? sampleGross
     : +(sampleGross + (sampleTaxable * (numRate / 100))).toFixed(2);
 
+  const [gstSaving, setGstSaving] = useState(false);
+  const [gstSavedMsg, setGstSavedMsg] = useState('');
+
+  async function saveGstSetting(enabled: boolean, rate?: number | string, inclusive?: boolean) {
+    const nextRate = rate !== undefined ? rate : taxPercent;
+    const nextInclusive = inclusive !== undefined ? inclusive : taxInclusive;
+    const num = Number(nextRate) || 0;
+    const effectiveRate = enabled && num <= 0 ? 5 : num;
+
+    setTaxEnabled(enabled);
+    if (enabled && num <= 0) setTaxPercent('5');
+    if (inclusive !== undefined) setTaxInclusive(inclusive);
+    if (rate !== undefined) setTaxPercent(String(rate));
+
+    setGstSaving(true);
+    setGstSavedMsg('');
+    try {
+      const res = await api.put('/auth/settings', {
+        taxEnabled: enabled,
+        taxPercent: enabled ? effectiveRate : 0,
+        taxInclusive: nextInclusive,
+      });
+      if (res.data.user) {
+        updateUser(res.data.user);
+        setGstSavedMsg('✓ Saved');
+        setTimeout(() => setGstSavedMsg(''), 3000);
+      }
+    } catch (err: any) {
+      console.warn('Failed to auto-save GST settings:', err);
+      setError(err?.response?.data?.error || 'Could not auto-save GST settings');
+    } finally {
+      setGstSaving(false);
+    }
+  }
+
   const [upiPassword, setUpiPassword] = useState('');
   const isUpiChanged =
     (upiId.trim() || '') !== (user?.upiId || '') ||
@@ -184,7 +219,7 @@ export default function SettingsTab() {
         payeeName: payeeName.trim() || null,
         taxEnabled,
         taxInclusive,
-        taxPercent: taxEnabled ? (Number(taxPercent) || 0) : 0,
+        taxPercent: taxEnabled ? (Number(taxPercent) || 5) : 0,
         currentPassword: isUpiChanged ? upiPassword.trim() : undefined,
       });
       updateUser(res.data.user);
@@ -903,8 +938,18 @@ export default function SettingsTab() {
               {/* TOGGLE: GST On/Off */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#f8fafc' }}>
-                    Enable GST Tax Billing
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#f8fafc' }}>
+                      Enable GST Tax Billing
+                    </span>
+                    {gstSaving && (
+                      <span style={{ fontSize: '0.68rem', color: '#38bdf8', fontWeight: 600 }}>Saving…</span>
+                    )}
+                    {gstSavedMsg && (
+                      <span style={{ fontSize: '0.68rem', color: '#34d399', fontWeight: 700, background: 'rgba(16, 185, 129, 0.15)', padding: '1px 6px', borderRadius: 4 }}>
+                        {gstSavedMsg}
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: taxEnabled ? '#34d399' : '#94a3b8', marginTop: 2 }}>
                     {taxEnabled ? '🟢 Active — Invoices and receipts include CGST + SGST itemization.' : '⚪ Disabled — Invoices and receipts print clean totals without tax.'}
@@ -913,7 +958,7 @@ export default function SettingsTab() {
 
                 <button
                   type="button"
-                  onClick={() => setTaxEnabled(!taxEnabled)}
+                  onClick={() => saveGstSetting(!taxEnabled)}
                   style={{
                     width: 50,
                     height: 28,
@@ -950,7 +995,7 @@ export default function SettingsTab() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
                       <button
                         type="button"
-                        onClick={() => setTaxInclusive(true)}
+                        onClick={() => saveGstSetting(taxEnabled, taxPercent, true)}
                         style={{
                           padding: '12px',
                           borderRadius: 10,
@@ -973,7 +1018,7 @@ export default function SettingsTab() {
 
                       <button
                         type="button"
-                        onClick={() => setTaxInclusive(false)}
+                        onClick={() => saveGstSetting(taxEnabled, taxPercent, false)}
                         style={{
                           padding: '12px',
                           borderRadius: 10,
@@ -1011,6 +1056,7 @@ export default function SettingsTab() {
                       step="0.1"
                       value={taxPercent}
                       onChange={(e) => setTaxPercent(e.target.value)}
+                      onBlur={() => saveGstSetting(taxEnabled, taxPercent, taxInclusive)}
                       placeholder="5"
                       style={{ width: '100%', padding: '10px 12px', fontSize: '16px', borderRadius: 8, background: 'var(--bg, #0f172a)', border: '1px solid var(--border)', color: '#f8fafc' }}
                     />
@@ -1024,7 +1070,7 @@ export default function SettingsTab() {
                         <button
                           key={p.val}
                           type="button"
-                          onClick={() => setTaxPercent(p.val)}
+                          onClick={() => saveGstSetting(taxEnabled, p.val, taxInclusive)}
                           style={{
                             padding: '4px 10px',
                             borderRadius: 6,

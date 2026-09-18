@@ -24,6 +24,8 @@ interface Props {
     upiAmount?: number | null;
     finalTotal: number;
     finalTax: number;
+    taxEnabled?: boolean;
+    taxPercent?: number;
   }) => Promise<void> | void;
 }
 
@@ -51,9 +53,11 @@ export default function PaymentModal({
   onConfirmPayment,
 }: Props) {
   const baseSubtotal = subtotal !== undefined ? subtotal : amount;
-  const isTaxEnabled = taxEnabled !== undefined ? taxEnabled : (taxPercent ? taxPercent > 0 : false);
+  const initialTaxEnabled = taxEnabled !== undefined ? taxEnabled : (taxPercent ? taxPercent > 0 : false);
+  const [isTaxActive, setIsTaxActive] = useState<boolean>(initialTaxEnabled);
+  const effectiveTaxPercent = (taxPercent && taxPercent > 0) ? taxPercent : 5;
   const isTaxInclusive = taxInclusive !== false;
-  const taxRate = isTaxEnabled ? (taxPercent || 0) : 0;
+  const taxRate = isTaxActive ? effectiveTaxPercent : 0;
 
   // Discount state
   const [discountType, setDiscountType] = useState<'percent' | 'flat'>('percent');
@@ -168,6 +172,8 @@ export default function PaymentModal({
         upiAmount: method === 'split' ? (Number(splitUpi) || 0) : (method === 'upi' ? finalPayable : null),
         finalTotal: finalPayable,
         finalTax: calculatedTax,
+        taxEnabled: isTaxActive,
+        taxPercent: isTaxActive ? effectiveTaxPercent : 0,
       });
       if (action === 'print') {
         setIsPrinted(true);
@@ -597,6 +603,64 @@ export default function PaymentModal({
                 {taxRate > 0 && <span style={{ color: '#94a3b8', fontWeight: 400 }}>Tax on ₹{taxableSubtotal.toFixed(2)}: ₹{calculatedTax.toFixed(2)} ({isTaxInclusive ? 'Incl.' : '+Extra'})</span>}
               </div>
             )}
+          </div>
+
+          {/* 6. GST Tax Toggle for this Bill */}
+          <div
+            style={{
+              background: 'var(--panel-2, #1e293b)',
+              border: isTaxActive ? '1px solid rgba(56, 189, 248, 0.35)' : '1px solid var(--border, #334155)',
+              borderRadius: 12,
+              padding: '10px 14px',
+              margin: '0 0 8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '1.1rem' }}>🏛️</span>
+              <div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: isTaxActive ? '#38bdf8' : '#f8fafc' }}>
+                  GST Tax ({effectiveTaxPercent}%)
+                </div>
+                <div style={{ fontSize: '0.68rem', color: isTaxActive ? '#34d399' : '#94a3b8' }}>
+                  {isTaxActive
+                    ? `${isTaxInclusive ? 'Inclusive (menu price includes GST)' : 'Exclusive (+ added on top)'} • CGST ${(effectiveTaxPercent / 2).toFixed(1)}% + SGST ${(effectiveTaxPercent / 2).toFixed(1)}%`
+                    : 'Disabled for this bill — tap switch to enable GST'}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsTaxActive(!isTaxActive)}
+              style={{
+                width: 46,
+                height: 24,
+                borderRadius: 12,
+                background: isTaxActive ? '#10b981' : '#475569',
+                border: 'none',
+                cursor: 'pointer',
+                position: 'relative',
+                transition: 'background 0.2s',
+                flexShrink: 0,
+                padding: 2,
+              }}
+              aria-label="Toggle GST for this bill"
+            >
+              <div
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  background: '#ffffff',
+                  transform: isTaxActive ? 'translateX(22px)' : 'translateX(0px)',
+                  transition: 'transform 0.2s',
+                }}
+              />
+            </button>
           </div>
         </div>
 
