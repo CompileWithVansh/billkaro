@@ -11,3 +11,9 @@ backend/scratch_migrate.js
 04_UI_DESIGN_SPECIFICATION.md
 05_DEVELOPMENT_AND_EXECUTION_PLAN.md
 06_SYSTEM_AUDIT_AND_BENCHMARK_ANALYSIS.md
+
+# Media & Demo Recordings
+brag-output/
+brag-output-vertical/
+*.mp4
+

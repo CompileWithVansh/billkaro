@@ -127,7 +127,7 @@ export const ReceiptCard = forwardRef<HTMLDivElement, Props>(({
         <tbody>
           {bill.lines.map((line, idx) => {
             const catalogItem = items?.find((i) => i.id === line.itemId);
-            const desc = getItemDesc(line) || (catalogItem ? getItemDesc(catalogItem) : '');
+            const desc = line.isAdjustment ? '' : (getItemDesc(line) || (catalogItem ? getItemDesc(catalogItem) : ''));
             return (
               <tr key={idx} style={{ borderBottom: '1px dotted #e2e8f0' }}>
                 <td style={{ padding: '8px 0', maxWidth: '180px' }}>

@@ -87,7 +87,7 @@ export async function printBill({
   const rows = bill.lines.map((l) => {
     const lineTotal = (l.price * l.qty).toFixed(2);
     const catalogItem = items?.find((i) => i.id === l.itemId);
-    const itemDesc = getItemDesc(l) || (catalogItem ? getItemDesc(catalogItem) : '');
+    const itemDesc = l.isAdjustment ? '' : (getItemDesc(l) || (catalogItem ? getItemDesc(catalogItem) : ''));
     const desc = itemDesc
       ? `<div class="item-desc">${escHtml(itemDesc)}</div>`
       : '';
@@ -146,7 +146,7 @@ export async function printBill({
       </tr>` : ''}`;
   }
 
-  const totalQty = bill.lines.reduce((s, l) => s + l.qty, 0);
+  const totalQty = bill.lines.filter((l) => !l.isAdjustment).reduce((s, l) => s + l.qty, 0);
   const billLabelDisplay = invoiceNumber || getBillDisplayLabel(bill);
 
   const html = `<!DOCTYPE html>

@@ -47,6 +47,7 @@ import ItemEditorModal from '../components/ItemEditorModal';
 import PaymentModal from '../components/PaymentModal';
 import SettingsModal from '../components/SettingsModal';
 import KeypadModal from '../components/KeypadModal';
+import CustomAmountModal from '../components/CustomAmountModal';
 import HistoryModal from '../components/HistoryModal';
 import InventoryModal from '../components/InventoryModal';
 import ConnectKdsModal from '../components/ConnectKdsModal';
@@ -627,12 +628,30 @@ export default function PosPage() {
     });
   }
 
-  function addCustomAmount(amount: number) {
+  function addCustomAmount(data: {
+    amount: number;
+    name: string;
+    itemId?: number | null;
+    category?: string;
+    description?: string;
+    isAdjustment?: boolean;
+  }) {
     updateActiveBill((b) => ({
       ...b,
       lines: [
         ...b.lines,
-        { lineId: makeLineId(), itemId: null, name: 'Custom', price: amount, qty: 1 },
+        {
+          lineId: makeLineId(),
+          itemId: data.itemId ?? null,
+          name: data.name.trim() || 'Custom',
+          price: data.amount,
+          qty: 1,
+          category: data.category,
+          description: data.description,
+          variantName: data.itemId ? (data.isAdjustment ? 'Extra' : 'Custom') : undefined,
+          isCustomPrice: true,
+          isAdjustment: Boolean(data.isAdjustment),
+        },
       ],
     }));
     setCustomOpen(false);
@@ -1730,10 +1749,9 @@ export default function PosPage() {
       )}
 
       {customOpen && (
-        <KeypadModal
-          title="Custom amount"
-          mode="amount"
-          confirmLabel="Add to bill"
+        <CustomAmountModal
+          items={items}
+          activeBillLines={activeBill?.lines}
           onClose={() => setCustomOpen(false)}
           onConfirm={addCustomAmount}
         />

@@ -372,19 +372,29 @@ export default function HistoryModal({ user, items, initialTab = 'bills', onClos
         // Check catalog item
         const catalogItem = item.itemId ? catalogItemMap.get(String(item.itemId)) : undefined;
 
-        if (variantName) {
-          parentName = rawName.replace(new RegExp(`\\s*\\(${variantName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)$`, 'i'), '').trim();
-        } else if (catalogItem && catalogItem.variants && catalogItem.variants.length > 0) {
+        if (catalogItem) {
           parentName = catalogItem.name;
-          const matched = catalogItem.variants.find(
-            (v) =>
-              (item.variantId && String(v.id) === String(item.variantId)) ||
-              rawName.toLowerCase().endsWith(`(${v.name.toLowerCase()})`) ||
-              Math.abs(Number(v.price) - Number(item.price)) <= 1
-          );
-          if (matched) {
-            variantName = matched.name;
+          if (variantName) {
+            // Already has explicit variantName e.g. "Half", "Extra", "Custom"
+          } else if (catalogItem.variants && catalogItem.variants.length > 0) {
+            const matched = catalogItem.variants.find(
+              (v) =>
+                (item.variantId && String(v.id) === String(item.variantId)) ||
+                rawName.toLowerCase().endsWith(`(${v.name.toLowerCase()})`) ||
+                Math.abs(Number(v.price) - Number(item.price)) <= 1
+            );
+            if (matched) {
+              variantName = matched.name;
+            }
           }
+          if (!variantName) {
+            const match = rawName.match(/^(.*?)\s*\((Quarter|Qtr|Half|Full|Small|Medium|Large|Regular|Single|Double|Triple|\d+\s*(?:pc|pcs|gm|g|kg|ml|l|piece|pieces))\)$/i);
+            if (match) {
+              variantName = match[2].trim();
+            }
+          }
+        } else if (variantName) {
+          parentName = rawName.replace(new RegExp(`\\s*\\(${variantName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)$`, 'i'), '').trim();
         } else {
           const match = rawName.match(/^(.*?)\s*\((Quarter|Qtr|Half|Full|Small|Medium|Large|Regular|Single|Double|Triple|\d+\s*(?:pc|pcs|gm|g|kg|ml|l|piece|pieces))\)$/i);
           if (match) {
@@ -402,20 +412,21 @@ export default function HistoryModal({ user, items, initialTab = 'bills', onClos
           variantsMap: new Map(),
         };
 
-        existing.qty += qty;
+        const qtyToAdd = item.isAdjustment ? 0 : qty;
+        existing.qty += qtyToAdd;
         existing.revenue += rev;
         if (!existing.category && (item.category || catalogItem?.category)) {
           existing.category = item.category || catalogItem?.category;
         }
 
-        if (variantName) {
+        if (variantName && !item.isAdjustment && variantName.toLowerCase() !== 'extra' && variantName.toLowerCase() !== 'custom') {
           const vKey = variantName.toLowerCase();
           const existingV = existing.variantsMap.get(vKey) || {
             name: variantName,
             qty: 0,
             revenue: 0,
           };
-          existingV.qty += qty;
+          existingV.qty += qtyToAdd;
           existingV.revenue += rev;
           existing.variantsMap.set(vKey, existingV);
         }
@@ -429,7 +440,7 @@ export default function HistoryModal({ user, items, initialTab = 'bills', onClos
       category: d.category,
       qty: d.qty,
       revenue: d.revenue,
-      variants: Array.from(d.variantsMap.values()).sort((a, b) => b.qty - a.qty),
+      variants: Array.from(d.variantsMap.values()).filter((v) => v.qty > 0).sort((a, b) => b.qty - a.qty),
     }));
 
     list.sort((a, b) => b.qty - a.qty || b.revenue - a.revenue);

@@ -335,7 +335,7 @@ export const itemsRepo = {
   async deductStock(userId, items) {
     if (!Array.isArray(items) || items.length === 0) return;
     const linesToDeduct = items.filter(
-      (line) => line && line.itemId && Number(line.qty) > 0
+      (line) => line && line.itemId && !line.isAdjustment && Number(line.qty) > 0
     );
     if (linesToDeduct.length === 0) return;
 

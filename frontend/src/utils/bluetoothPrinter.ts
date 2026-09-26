@@ -726,7 +726,7 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
       const lineTotal = line.price * line.qty;
       builder.itemRow(line.name, line.qty, line.price, lineTotal);
       const catalogItem = items?.find((i) => i.id === line.itemId);
-      const desc = getItemDesc(line) || (catalogItem ? getItemDesc(catalogItem) : '');
+      const desc = line.isAdjustment ? '' : (getItemDesc(line) || (catalogItem ? getItemDesc(catalogItem) : ''));
       if (desc) {
         builder.line(`  * ${desc.substring(0, 28)}`);
       }
@@ -735,7 +735,7 @@ export async function printDirectBluetoothReceipt(params: PrintReceiptParams): P
     builder.divider('-');
 
     // Totals
-    const totalQty = bill.lines.reduce((s, l) => s + l.qty, 0);
+    const totalQty = bill.lines.filter((l) => !l.isAdjustment).reduce((s, l) => s + l.qty, 0);
     builder.twoCol(`Total Items (${totalQty}):`, `Rs ${subtotal.toFixed(2)}`);
 
     if (discountAmount && discountAmount > 0) {

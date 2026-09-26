@@ -264,6 +264,8 @@ router.post(
       variantName: l.variantName ? sanitizeText(String(l.variantName)) : undefined,
       price: typeof l.price === 'number' ? l.price : Number(l.price) || 0,
       qty: typeof l.qty === 'number' ? l.qty : Number(l.qty) || 1,
+      isCustomPrice: Boolean(l.isCustomPrice),
+      isAdjustment: Boolean(l.isAdjustment),
     }));
 
     // 1. Verify line items & prices (Catalog price lock against internal theft)
@@ -292,31 +294,34 @@ router.post(
       }
 
       // If line is linked to catalog itemId, verify price matches database (1 rupee tolerance for float precision)
+      // Custom priced lines (isCustomPrice: true) bypass catalog unit price check for ad-hoc amounts / extra portions
       if (line.itemId) {
         const dbItem = dbItemMap.get(Number(line.itemId));
         if (dbItem) {
-          let expectedPrice = Number(dbItem.price);
-          const rawVariants = dbItem.variants_json;
-          let itemVariants = [];
-          if (Array.isArray(rawVariants)) {
-            itemVariants = rawVariants;
-          } else if (typeof rawVariants === 'string') {
-            try { itemVariants = JSON.parse(rawVariants); } catch {}
-          }
-
-          if (Array.isArray(itemVariants) && itemVariants.length > 0) {
-            const matchedVariant = line.variantId
-              ? itemVariants.find((v) => String(v.id) === String(line.variantId))
-              : itemVariants.find((v) => Math.abs(linePrice - Number(v.price)) <= 1);
-            if (matchedVariant) {
-              expectedPrice = Number(matchedVariant.price);
+          if (!line.isCustomPrice) {
+            let expectedPrice = Number(dbItem.price);
+            const rawVariants = dbItem.variants_json;
+            let itemVariants = [];
+            if (Array.isArray(rawVariants)) {
+              itemVariants = rawVariants;
+            } else if (typeof rawVariants === 'string') {
+              try { itemVariants = JSON.parse(rawVariants); } catch {}
             }
-          }
 
-          if (Math.abs(linePrice - expectedPrice) > 1) {
-            return res.status(400).json({
-              error: `Price mismatch for ${dbItem.name}. Expected ₹${expectedPrice}, got ₹${linePrice}`,
-            });
+            if (Array.isArray(itemVariants) && itemVariants.length > 0) {
+              const matchedVariant = line.variantId
+                ? itemVariants.find((v) => String(v.id) === String(line.variantId))
+                : itemVariants.find((v) => Math.abs(linePrice - Number(v.price)) <= 1);
+              if (matchedVariant) {
+                expectedPrice = Number(matchedVariant.price);
+              }
+            }
+
+            if (Math.abs(linePrice - expectedPrice) > 1) {
+              return res.status(400).json({
+                error: `Price mismatch for ${dbItem.name}. Expected ₹${expectedPrice}, got ₹${linePrice}`,
+              });
+            }
           }
         }
       }

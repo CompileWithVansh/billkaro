@@ -43,6 +43,8 @@ export interface CartLine {
   description?: string;    // item description shown on receipt / WhatsApp
   variantId?: string;      // optional variant identifier
   variantName?: string;    // e.g. "Half", "Full"
+  isCustomPrice?: boolean; // custom/ad-hoc price (e.g. ₹300 chicken or custom extra portion)
+  isAdjustment?: boolean;  // extra portion adjustment line (does not inflate dish unit order count or duplicate stock)
 }
 
 export function getItemDesc(

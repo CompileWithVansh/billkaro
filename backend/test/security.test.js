@@ -765,3 +765,52 @@ test('Variant Price Verification - Supports Multiple Portion Tiers and Blocks Ta
   assert.match(tampered.error, /Expected ₹260, got ₹10/);
 });
 
+test('Price Verification - Allows Custom Priced Line (isCustomPrice: true)', () => {
+  const dbItem = { id: 42, name: 'Tawa Chicken', price: 260 };
+  const dbItemMap = new Map([[42, dbItem]]);
+
+  function verifyLine(line) {
+    if (line.itemId) {
+      const item = dbItemMap.get(line.itemId);
+      if (item && !line.isCustomPrice) {
+        if (Math.abs(line.price - item.price) > 1) {
+          return { error: `Price mismatch for ${item.name}` };
+        }
+      }
+    }
+    return { ok: true };
+  }
+
+  // 1. Extra ₹40 custom adjustment linked to Tawa Chicken must pass
+  const customAdjustment = { itemId: 42, name: 'Extra Chicken', price: 40, isCustomPrice: true };
+  assert.equal(verifyLine(customAdjustment).ok, true);
+
+  // 2. Standalone ₹300 custom price linked to Tawa Chicken must pass
+  const customTotal = { itemId: 42, name: 'Chicken (Custom ₹300)', price: 300, isCustomPrice: true };
+  assert.equal(verifyLine(customTotal).ok, true);
+
+  // 3. Regular line without isCustomPrice must still fail if price is mismatched
+  const unauthorizedChange = { itemId: 42, name: 'Tawa Chicken', price: 40 };
+  assert.equal(verifyLine(unauthorizedChange).ok, undefined);
+  assert.equal(verifyLine(unauthorizedChange).error, 'Price mismatch for Tawa Chicken');
+});
+
+test('DeductStock Guard - Bypasses Adjustment Lines (isAdjustment: true)', () => {
+  function getLinesToDeduct(items) {
+    if (!Array.isArray(items) || items.length === 0) return [];
+    return items.filter((line) => line && line.itemId && !line.isAdjustment && Number(line.qty) > 0);
+  }
+
+  const items = [
+    { itemId: 42, name: 'Tawa Chicken (Half)', price: 260, qty: 1 },
+    { itemId: 42, name: 'Extra Chicken', price: 40, qty: 1, isCustomPrice: true, isAdjustment: true },
+  ];
+
+  const lines = getLinesToDeduct(items);
+  // Only the primary portion should be deducted, not the extra ₹40 adjustment
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].name, 'Tawa Chicken (Half)');
+  assert.equal(lines[0].qty, 1);
+});
+
+
